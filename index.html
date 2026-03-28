@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ALIEN DASH — Cosmic Runner</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" class="screen active">
+  <canvas id="loginBgCanvas"></canvas>
+  <div class="login-layout">
+    <div class="login-art-panel">
+      <svg class="login-alien-svg" viewBox="0 0 480 600" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="lgBurst" cx="50%" cy="60%" r="70%">
+            <stop offset="0%" stop-color="#d4880a" stop-opacity="0.95"/>
+            <stop offset="50%" stop-color="#7a4200" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#0a0400" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="lgHead" cx="38%" cy="32%" r="58%">
+            <stop offset="0%" stop-color="#ccc5a8"/>
+            <stop offset="55%" stop-color="#9a9278"/>
+            <stop offset="100%" stop-color="#5a5040"/>
+          </radialGradient>
+          <radialGradient id="lgEye" cx="30%" cy="28%" r="68%">
+            <stop offset="0%" stop-color="#1c1c40"/>
+            <stop offset="100%" stop-color="#050508"/>
+          </radialGradient>
+          <radialGradient id="lgBody" cx="40%" cy="35%" r="60%">
+            <stop offset="0%" stop-color="#a0a885"/>
+            <stop offset="100%" stop-color="#606848"/>
+          </radialGradient>
+          <filter id="lgGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="8" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="lgSoft" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="18" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <ellipse cx="240" cy="360" rx="280" ry="260" fill="url(#lgBurst)"/>
+        <g opacity="0.28" stroke="#e8a020" stroke-width="1.5">
+          <line x1="240" y1="360" x2="40" y2="10"/><line x1="240" y1="360" x2="120" y2="0"/>
+          <line x1="240" y1="360" x2="200" y2="0"/><line x1="240" y1="360" x2="280" y2="0"/>
+          <line x1="240" y1="360" x2="360" y2="0"/><line x1="240" y1="360" x2="440" y2="10"/>
+          <line x1="240" y1="360" x2="480" y2="80"/><line x1="240" y1="360" x2="480" y2="200"/>
+          <line x1="240" y1="360" x2="0" y2="150"/><line x1="240" y1="360" x2="0" y2="320"/>
+        </g>
+        <ellipse cx="200" cy="598" rx="160" ry="25" fill="rgba(80,40,0,0.4)"/>
+        <ellipse cx="200" cy="592" rx="70" ry="14" fill="rgba(0,0,0,0.45)"/>
+        <path d="M175,490 Q165,540 158,590" stroke="#707860" stroke-width="18" stroke-linecap="round" fill="none"/>
+        <path d="M225,490 Q235,540 242,590" stroke="#707860" stroke-width="18" stroke-linecap="round" fill="none"/>
+        <ellipse cx="154" cy="590" rx="20" ry="9" fill="#606850"/>
+        <ellipse cx="246" cy="590" rx="20" ry="9" fill="#606850"/>
+        <ellipse cx="200" cy="430" rx="72" ry="85" fill="url(#lgBody)"/>
+        <path d="M162,400 Q200,390 238,400" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
+        <path d="M160,422 Q200,412 240,422" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
+        <path d="M162,444 Q200,434 238,444" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
+        <path d="M165,466 Q200,456 235,466" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
+        <path d="M135,390 Q85,340 62,275" stroke="#808870" stroke-width="20" stroke-linecap="round" fill="none"/>
+        <ellipse cx="58" cy="268" rx="20" ry="16" fill="#808870"/>
+        <line x1="42" y1="255" x2="25" y2="232" stroke="#808870" stroke-width="8" stroke-linecap="round"/>
+        <line x1="54" y1="250" x2="44" y2="224" stroke="#808870" stroke-width="8" stroke-linecap="round"/>
+        <line x1="66" y1="250" x2="63" y2="220" stroke="#808870" stroke-width="8" stroke-linecap="round"/>
+        <line x1="76" y1="256" x2="80" y2="228" stroke="#808870" stroke-width="8" stroke-linecap="round"/>
+        <path d="M265,390 Q305,440 302,500" stroke="#808870" stroke-width="20" stroke-linecap="round" fill="none"/>
+        <rect x="185" y="318" width="30" height="48" rx="13" fill="#888878"/>
+        <ellipse cx="200" cy="260" rx="108" ry="128" fill="url(#lgHead)" filter="url(#lgSoft)"/>
+        <ellipse cx="162" cy="200" rx="42" ry="58" fill="rgba(255,255,255,0.07)"/>
+        <ellipse cx="152" cy="145" rx="26" ry="11" fill="#888878" transform="rotate(-18,152,145)"/>
+        <ellipse cx="250" cy="145" rx="26" ry="11" fill="#888878" transform="rotate(18,250,145)"/>
+        <ellipse cx="160" cy="262" rx="50" ry="43" fill="url(#lgEye)" transform="rotate(-18,160,262)"/>
+        <ellipse cx="150" cy="250" rx="17" ry="14" fill="rgba(50,50,110,0.55)"/>
+        <ellipse cx="143" cy="243" rx="8" ry="6" fill="rgba(255,255,255,0.75)"/>
+        <ellipse cx="244" cy="262" rx="46" ry="41" fill="url(#lgEye)" transform="rotate(18,244,262)"/>
+        <ellipse cx="256" cy="250" rx="15" ry="13" fill="rgba(50,50,110,0.55)"/>
+        <ellipse cx="262" cy="243" rx="7" ry="5" fill="rgba(255,255,255,0.75)"/>
+        <ellipse cx="190" cy="304" rx="7" ry="4" fill="rgba(0,0,0,0.38)" transform="rotate(-12,190,304)"/>
+        <ellipse cx="212" cy="304" rx="7" ry="4" fill="rgba(0,0,0,0.38)" transform="rotate(12,212,304)"/>
+        <path d="M178,332 Q200,344 222,332" stroke="rgba(0,0,0,0.3)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <text x="270" y="100" font-family="Georgia,serif" font-size="32" font-style="italic" fill="#f0cc50" filter="url(#lgGlow)" opacity="0.92" transform="rotate(-7,270,100)">Good Morning</text>
+        <g filter="url(#lgGlow)">
+          <circle cx="390" cy="220" r="56" fill="#d5d5d5" stroke="#aaa" stroke-width="3"/>
+          <circle cx="390" cy="220" r="50" fill="#c8c8c8"/>
+          <path d="M365,196 Q394,174 426,196 Q448,218 426,244 Q394,266 365,244 Q342,222 365,196Z" fill="#b2b2b2"/>
+          <circle cx="407" cy="210" r="34" fill="#c8c8c8"/>
+          <ellipse cx="390" cy="220" rx="22" ry="38" fill="none" stroke="#969696" stroke-width="1.2" opacity="0.8"/>
+          <line x1="350" y1="207" x2="430" y2="207" stroke="#969696" stroke-width="1.2" opacity="0.8"/>
+          <line x1="350" y1="233" x2="430" y2="233" stroke="#969696" stroke-width="1.2" opacity="0.8"/>
+          <text x="390" y="288" font-family="Georgia,serif" font-size="12" fill="#ffd700" text-anchor="middle" font-weight="bold" filter="url(#lgGlow)">I Believe</text>
+          <circle cx="390" cy="220" r="62" fill="none" stroke="rgba(255,230,100,0.3)" stroke-width="6"/>
+        </g>
+      </svg>
+      <div class="login-art-tagline">
+        <span class="tag-line1">👽 THEY'RE HERE.</span>
+        <span class="tag-line2">ARE YOU READY TO RUN?</span>
+      </div>
+    </div>
+    <div class="login-form-panel">
+      <div class="login-box">
+        <div class="login-logo-row">
+          <span class="login-logo-icon">🛸</span>
+          <div>
+            <h1 class="game-title">ALIEN DASH</h1>
+            <p class="game-subtitle">COSMIC STREET RUNNER</p>
+          </div>
+        </div>
+        <p class="login-welcome-tag">⚡ IDENTIFY YOURSELF, EARTHLING</p>
+        <div class="input-group">
+          <label>CALLSIGN (USERNAME)</label>
+          <input type="text" id="usernameInput" placeholder="Enter your name..." maxlength="16" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label>ACCESS CODE <span class="label-hint">(required · admin = admin123)</span></label>
+          <input type="password" id="passwordInput" placeholder="Enter access code..." maxlength="20" autocomplete="off">
+        </div>
+        <div class="login-error" id="loginError"></div>
+        <button class="btn-start" id="startBtn">🚀 LAUNCH MISSION</button>
+        <button class="btn-leaderboard" id="viewLeaderBtn">🏆 VIEW LEADERBOARD</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN MENU -->
+<div id="menuScreen" class="screen">
+  <canvas id="menuBg"></canvas>
+  <div class="menu-overlay">
+    <div class="welcome-msg" id="welcomeMsg"></div>
+    <h1 class="game-title-big">ALIEN DASH</h1>
+    <div class="best-score-display" id="menuBestScore"></div>
+    <button class="btn-play" id="playBtn">▶ PLAY NOW</button>
+    <button class="btn-secondary" id="menuLeaderBtn">🏆 LEADERBOARD</button>
+    <button class="btn-secondary" id="logoutBtn">↩ LOGOUT</button>
+  </div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="gameScreen" class="screen">
+  <canvas id="gameCanvas"></canvas>
+  <div id="hud">
+    <div class="hud-left">
+      <div class="hud-score">SCORE <span id="scoreDisplay">0</span></div>
+      <div class="hud-best">BEST <span id="bestDisplay">0</span></div>
+    </div>
+    <div class="hud-center">
+      <div class="hud-coins">🪙 <span id="coinDisplay">0</span></div>
+      <div class="hud-combo" id="comboDisplay"></div>
+    </div>
+    <div class="hud-right">
+      <div class="hud-lives" id="livesDisplay">❤️❤️❤️</div>
+      <div class="hud-zone" id="zoneDisplay"></div>
+    </div>
+  </div>
+  <div id="powerupBar">
+    <div class="pu-slot hidden" id="puMagnet">🧲 <span id="puMagnetTimer"></span></div>
+    <div class="pu-slot hidden" id="puSpeed">⚡ <span id="puSpeedTimer"></span></div>
+    <div class="pu-slot hidden" id="puShield">🛡️ <span id="puShieldTimer"></span></div>
+    <div class="pu-slot hidden" id="puStar">⭐ <span id="puStarTimer"></span></div>
+  </div>
+  <div id="countdown" class="countdown-overlay hidden">
+    <div class="countdown-num" id="countdownNum">3</div>
+    <div class="countdown-sub" id="countdownSub"></div>
+  </div>
+  <button id="pauseBtn" class="hud-btn" style="top:12px;right:16px">⏸</button>
+  <button id="muteBtn" class="hud-btn" style="top:58px;right:16px">🔊</button>
+  <div id="tapHint" class="tap-hint">TAP TO JUMP · DOUBLE TAP = DOUBLE JUMP</div>
+  <div id="zoneTransition" class="zone-transition hidden"></div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameOverScreen" class="screen">
+  <div class="gameover-box">
+    <div class="gameover-icon" id="gameoverIcon">💥</div>
+    <div class="gameover-title" id="gameoverTitle">MISSION FAILED</div>
+    <div class="gameover-stats">
+      <div class="go-stat"><span class="go-val" id="finalScore">0</span><span class="go-lbl">SCORE</span></div>
+      <div class="go-stat"><span class="go-val gold" id="finalCoins">0</span><span class="go-lbl">COINS</span></div>
+      <div class="go-stat"><span class="go-val green" id="finalDistance">0m</span><span class="go-lbl">DISTANCE</span></div>
+      <div class="go-stat"><span class="go-val purple" id="finalCombo">0x</span><span class="go-lbl">MAX COMBO</span></div>
+    </div>
+    <div class="gameover-best" id="newBestMsg"></div>
+    <div class="go-btns">
+      <button class="btn-play" id="retryBtn">↺ RETRY</button>
+      <button class="btn-secondary" id="goMenuBtn">⌂ MENU</button>
+      <button class="btn-leaderboard" id="goLeaderBtn">🏆 SCORES</button>
+    </div>
+  </div>
+</div>
+
+<!-- LEADERBOARD -->
+<div id="leaderboardScreen" class="screen">
+  <div class="leaderboard-panel">
+    <h2 class="lb-title">🏆 HALL OF FAME</h2>
+    <div id="leaderboardList"></div>
+    <button class="btn-secondary" id="backFromLB" style="margin-top:16px">← BACK</button>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="adminScreen" class="screen">
+  <div class="admin-panel">
+    <h2 class="admin-title">⚙️ ADMIN CONTROL</h2>
+    <div class="admin-stats" id="adminStats"></div>
+    <div class="admin-actions">
+      <button class="admin-btn danger" id="resetLeaderBtn">🗑 RESET LEADERBOARD</button>
+      <button class="admin-btn danger" id="resetAllBtn">💀 RESET ALL DATA</button>
+      <button class="admin-btn" id="exportBtn">📤 EXPORT JSON</button>
+    </div>
+    <h3 class="admin-sub">ALL PLAYERS</h3>
+    <div id="adminPlayerList" class="admin-player-list"></div>
+    <button class="btn-secondary" id="backFromAdmin">← BACK</button>
+  </div>
+</div>
+
+<!-- PAUSE -->
+<div id="pauseMenu" class="pause-overlay hidden">
+  <div class="pause-box">
+    <div style="font-size:48px;margin-bottom:12px">⏸</div>
+    <h2>PAUSED</h2>
+    <button class="btn-play" id="resumeBtn">▶ RESUME</button>
+    <button class="btn-secondary" id="quitBtn">✕ QUIT</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
