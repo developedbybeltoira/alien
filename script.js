@@ -383,7 +383,7 @@ const TGAuth = {
     // Telegram Login Widget — opens Telegram OAuth popup
     // Bot username: change 'AlienDashBot' to YOUR bot username
     // Create a bot at @BotFather, enable login widget, set domain
-    const botUsername = 'AlienDashBot'; // ← CHANGE THIS to your bot username
+    const botUsername = 'aliendashbot'; // ← CHANGE THIS to your bot username
 
     // Try Telegram widget popup approach
     if (window.Telegram && window.Telegram.Login) {
