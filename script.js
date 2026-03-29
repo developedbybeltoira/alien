@@ -340,12 +340,12 @@ function showScreen(id){
 }
 
 // ═══ TELEGRAM AUTH ════════════════════════════════════════════
-// Global callback — Telegram widget calls this automatically after login
+// ── Global TG auth handler — called by widget (browser) OR Mini App button ──
 window.onTelegramAuth = async function(tgUser) {
   showConnecting(true);
   try {
-    const tgId       = String(tgUser.id);
-    const displayName = (tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '');
+    const tgId        = String(tgUser.id);
+    const displayName = ((tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '')).trim() || 'Alien Runner';
     const username    = tgUser.username || displayName;
 
     App.user          = tgId;
@@ -357,6 +357,7 @@ window.onTelegramAuth = async function(tgUser) {
     DB.setUser(tgId);
     SFX.wake();
 
+    // Save/update profile in Supabase
     await DB.upsert(tgId, {
       displayName : displayName,
       tgId        : tgId,
@@ -366,11 +367,17 @@ window.onTelegramAuth = async function(tgUser) {
 
     SFX.play('start');
     showConnecting(false);
+
+    // If Mini App — notify Telegram that login succeeded
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+    }
+
     await loadLogin_toMenu();
   } catch(e) {
     showConnecting(false);
     const errEl = document.getElementById('loginError');
-    if(errEl) errEl.textContent = '⚠ CONNECTION ERROR — CHECK INTERNET';
+    if (errEl) errEl.textContent = '⚠ CONNECTION ERROR — CHECK INTERNET';
     console.error('TG auth error:', e);
   }
 };
@@ -425,22 +432,85 @@ document.getElementById('viewLeaderBtn').addEventListener('click',()=>{ App.prev
   draw();
 })();
 
-window.addEventListener('DOMContentLoaded',async ()=>{
-  document.addEventListener('touchstart',()=>SFX.wake(),{once:true});
-  document.addEventListener('mousedown',()=>SFX.wake(),{once:true});
-  const saved=DB.currentUser();
-  if(saved){
+window.addEventListener('DOMContentLoaded', async () => {
+  document.addEventListener('touchstart', ()=>SFX.wake(), {once:true});
+  document.addEventListener('mousedown',  ()=>SFX.wake(), {once:true});
+
+  // ── STEP 1: Check if running as Telegram Mini App ──
+  const tgWebApp = window.Telegram && window.Telegram.WebApp;
+  const isMiniApp = tgWebApp && tgWebApp.initDataUnsafe && tgWebApp.initDataUnsafe.user && tgWebApp.initDataUnsafe.user.id;
+
+  if (isMiniApp) {
+    // ══ MINI APP MODE — instant login, zero taps ══
+    tgWebApp.ready();
+    tgWebApp.expand(); // go fullscreen inside Telegram
+
+    const tgUser = tgWebApp.initDataUnsafe.user;
+    const tgId   = String(tgUser.id);
+
+    // Set theme colors to match game
+    tgWebApp.setHeaderColor('#000814');
+    tgWebApp.setBackgroundColor('#000814');
+
+    // Show the Mini App login panel with user's info
+    const detectEl    = document.getElementById('tgDetecting');
+    const miniLoginEl = document.getElementById('miniAppLogin');
+    const browserEl   = document.getElementById('browserLogin');
+    const nameEl      = document.getElementById('miniAppName');
+    const idEl        = document.getElementById('miniAppIdText');
+    const avatarEl    = document.getElementById('miniAppAvatar');
+    const btnEl       = document.getElementById('miniAppBtn');
+
+    if (detectEl)    detectEl.classList.add('hidden');
+    if (browserEl)   browserEl.classList.add('hidden');
+    if (miniLoginEl) miniLoginEl.classList.remove('hidden');
+
+    const displayName = (tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '');
+    if (nameEl) nameEl.textContent = displayName || 'Alien Runner';
+    if (idEl)   idEl.textContent   = 'TG ID: ' + tgId;
+
+    // Show profile photo if available
+    if (avatarEl && tgUser.photo_url) {
+      avatarEl.innerHTML = `<img src="${tgUser.photo_url}" alt="avatar" onerror="this.parentElement.textContent='👽'">`;
+    }
+
+    // Tap START PLAYING → auto login
+    if (btnEl) {
+      btnEl.addEventListener('click', async () => {
+        btnEl.textContent = '⟳ CONNECTING...';
+        btnEl.disabled = true;
+        await window.onTelegramAuth(tgUser);
+      });
+    }
+
+    return; // Don't check saved session — show fresh Mini App login
+  }
+
+  // ── STEP 2: Browser mode — check saved session first ──
+  const detectEl  = document.getElementById('tgDetecting');
+  const browserEl = document.getElementById('browserLogin');
+
+  // Try to restore saved session
+  const saved = DB.currentUser();
+  if (saved) {
     try {
       const p = await DB.load(saved);
-      if(p){
-        App.user = saved;
+      if (p) {
+        App.user          = saved;
         App.tgDisplayName = p.displayName || saved;
-        App.tgUsername = p.tgUsername || saved;
-        App.isAdmin = saved.startsWith('admin_');
-        await loadLogin_toMenu(); return;
+        App.tgUsername    = p.tgUsername  || saved;
+        App.isAdmin       = saved === 'admin';
+        if (detectEl)  detectEl.classList.add('hidden');
+        if (browserEl) browserEl.classList.remove('hidden');
+        await loadLogin_toMenu();
+        return;
       }
     } catch(e) {}
   }
+
+  // No session — show browser widget
+  if (detectEl)  detectEl.classList.add('hidden');
+  if (browserEl) browserEl.classList.remove('hidden');
   showScreen('loginScreen');
 });
 
@@ -470,7 +540,20 @@ async function loadMenu(){
 document.getElementById('playBtn').addEventListener('click',startGame);
 document.getElementById('shopBtn').addEventListener('click',()=>{renderShop();showScreen('shopScreen');});
 document.getElementById('menuLeaderBtn').addEventListener('click',()=>{App.prevScreen='menuScreen';renderLeaderboard();});
-document.getElementById('logoutBtn').addEventListener('click',()=>{App.user=null;App.isAdmin=false;App.tgDisplayName=null;App.tgUsername=null;App.tgPhotoUrl=null;SUPA._clearCache();DB.clearUser();document.getElementById('loginError').textContent='';document.getElementById('adminPassInput').value='';document.getElementById('adminOverride').classList.add('hidden');showScreen('loginScreen');});
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  App.user=null; App.isAdmin=false; App.tgDisplayName=null; App.tgUsername=null; App.tgPhotoUrl=null;
+  SUPA._clearCache(); DB.clearUser();
+  const errEl = document.getElementById('loginError');
+  if (errEl) errEl.textContent = '';
+  const apEl = document.getElementById('adminPassInput');
+  if (apEl) apEl.value = '';
+  const aoEl = document.getElementById('adminOverride');
+  if (aoEl) aoEl.classList.add('hidden');
+  // If Mini App — re-show the start button (don't reload page)
+  const miniBtn = document.getElementById('miniAppBtn');
+  if (miniBtn) { miniBtn.textContent = 'START PLAYING'; miniBtn.disabled = false; }
+  showScreen('loginScreen');
+});
 
 let menuAnimId=null;
 function startMenuBg(){
@@ -1430,4 +1513,4 @@ document.getElementById('backFromAdmin').addEventListener('click',()=>{if(App.is
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-console.log('%c🛸 ALIEN DASH v5 — Telegram Login · Supabase · Shop · Believer · Slow→Fast!','color:#00f5ff;font-size:14px;font-weight:bold');
+console.log('%c🛸 ALIEN DASH v5 — Mini App · Instant TG Login · Supabase · All Features!','color:#00f5ff;font-size:14px;font-weight:bold');

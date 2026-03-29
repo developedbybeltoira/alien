@@ -6,6 +6,8 @@
 <title>ALIEN DASH — Cosmic Runner</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<!-- Telegram Mini App SDK — instant login when opened inside Telegram -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 
@@ -87,18 +89,39 @@
         </div>
         <p class="login-welcome-tag">⚡ IDENTIFY YOURSELF, EARTHLING</p>
 
-        <!-- Official Telegram Login Widget — renders real TG button -->
+        <!-- Login area — Mini App = instant, Browser = widget -->
         <div id="tgLoginWrap" class="tg-login-wrap">
-          <script
-            async
-            src="https://telegram.org/js/telegram-widget.js?22"
-            data-telegram-login="aliendashbot"
-            data-size="large"
-            data-onauth="onTelegramAuth(user)"
-            data-request-access="write"
-            data-radius="10">
-          </script>
-          <div class="tg-note">Tap the button · Login with your Telegram account · No password needed</div>
+
+          <!-- Mini App instant login panel (shown inside Telegram) -->
+          <div id="miniAppLogin" class="mini-app-login hidden">
+            <div class="mini-app-avatar" id="miniAppAvatar">👽</div>
+            <div class="mini-app-name" id="miniAppName">Loading...</div>
+            <div class="mini-app-id" id="miniAppIdText"></div>
+            <button class="tg-btn" id="miniAppBtn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-right:8px"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8l-1.7 8.02c-.13.58-.47.72-.95.45l-2.62-1.93-1.27 1.22c-.14.14-.26.26-.53.26l.19-2.67 4.87-4.4c.21-.19-.05-.29-.33-.1L7.9 14.47l-2.56-.8c-.56-.17-.57-.56.12-.83l10.01-3.86c.46-.17.87.11.17.82z"/></svg>
+              START PLAYING
+            </button>
+          </div>
+
+          <!-- Browser widget login (shown in browser) -->
+          <div id="browserLogin" class="hidden">
+            <script
+              src="https://telegram.org/js/telegram-widget.js?22"
+              data-telegram-login="aliendashbot"
+              data-size="large"
+              data-onauth="onTelegramAuth(user)"
+              data-request-access="write"
+              data-radius="10">
+            </script>
+            <div class="tg-note">Opens Telegram to confirm · Your name &amp; ID stored automatically</div>
+          </div>
+
+          <!-- Loading state -->
+          <div id="tgDetecting" class="tg-detecting">
+            <div class="tg-detect-spinner"></div>
+            <div class="tg-detect-text">INITIALIZING...</div>
+          </div>
+
           <div class="login-error" id="loginError"></div>
         </div>
 
