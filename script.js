@@ -162,69 +162,113 @@ const SUPA_URL = 'https://djdgezalatzhnteibsim.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZGdlemFsYXR6aG50ZWlic2ltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3ODEwOTcsImV4cCI6MjA5MDM1NzA5N30.hleGlrE1_s2n-rFuQH7V04Q-2CWuc2x-XMK7vpfgG_E';
 
 const SUPA = {
-  async query(method, path, body) {
+  // ── Core fetch wrapper ──
+  async query(method, path, body, extraHeaders) {
     try {
+      const headers = {
+        'apikey': SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Content-Type': 'application/json',
+        ...extraHeaders
+      };
       const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
         method,
-        headers: {
-          'apikey': SUPA_KEY,
-          'Authorization': `Bearer ${SUPA_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
-        },
+        headers,
         body: body ? JSON.stringify(body) : undefined
       });
-      if (!res.ok) { const e = await res.text(); console.error('Supa error:', e); return null; }
+      if (!res.ok) {
+        const e = await res.text();
+        console.error('[Supabase]', method, path, e);
+        return null;
+      }
       const text = await res.text();
       return text ? JSON.parse(text) : [];
-    } catch(e) { console.error('Supa fetch error:', e); return null; }
+    } catch(e) {
+      console.error('[Supabase fetch error]', e);
+      return null;
+    }
   },
+
+  // ── Get single player by username (their TG ID) ──
   async getPlayer(username) {
-    const rows = await this.query('GET', `players?username=eq.${encodeURIComponent(username.toLowerCase())}&limit=1`);
+    const key = String(username).toLowerCase();
+    const rows = await this.query('GET',
+      `players?username=eq.${encodeURIComponent(key)}&limit=1`);
     return (rows && rows[0]) ? this._toLocal(rows[0]) : null;
   },
+
+  // ── Upsert player — INSERT or UPDATE via Supabase upsert ──
   async upsertPlayer(username, data) {
-    const existing = await this.getPlayer(username);
+    // First fetch existing so we don't overwrite fields we don't have
+    const existing = this._cacheGet(username) || await this.getPlayer(username);
     const row = this._toRow(username, data, existing);
-    const rows = await this.query('POST', 'players', row);
-    if (rows && rows[0]) { this._cacheSet(username, this._toLocal(rows[0])); return this._toLocal(rows[0]); }
+    // Use POST with Prefer: resolution=merge-duplicates for true upsert
+    const rows = await this.query('POST', 'players', row, {
+      'Prefer': 'resolution=merge-duplicates,return=representation'
+    });
+    if (rows && rows[0]) {
+      const local = this._toLocal(rows[0]);
+      this._cacheSet(username, local);
+      return local;
+    }
+    // If POST failed, try PATCH as fallback
+    if (existing) {
+      const patched = await this.query('PATCH',
+        `players?username=eq.${encodeURIComponent(String(username).toLowerCase())}`,
+        row, { 'Prefer': 'return=representation' });
+      if (patched && patched[0]) {
+        const local = this._toLocal(patched[0]);
+        this._cacheSet(username, local);
+        return local;
+      }
+    }
     return existing;
   },
+
   async leaderboard(limit=20) {
     const rows = await this.query('GET', `players?order=high_score.desc&limit=${limit}`);
     if (!rows) return [];
     return rows.map(r => this._toLocal(r));
   },
+
   async resetScores() {
-    await this.query('PATCH', 'players', { high_score:0, total_coins:0, spendable_coins:0, games_played:0, total_distance:0 });
+    // PATCH all rows
+    await this.query('PATCH', 'players?username=neq.IMPOSSIBLE_VALUE_THAT_MATCHES_ALL',
+      { high_score:0, total_coins:0, spendable_coins:0, games_played:0, total_distance:0 },
+      { 'Prefer': 'return=minimal' });
     this._clearCache();
   },
+
   async deletePlayer(username) {
-    await this.query('DELETE', `players?username=eq.${encodeURIComponent(username.toLowerCase())}`);
+    const key = String(username).toLowerCase();
+    await this.query('DELETE', `players?username=eq.${encodeURIComponent(key)}`);
     this._cacheDelete(username);
   },
+
   async getAllPlayers() {
     const rows = await this.query('GET', 'players?order=high_score.desc');
     if (!rows) return [];
     return rows.map(r => this._toLocal(r));
   },
   _toRow(username, data, existing) {
-    const base = existing || {};
+    const b = existing || {};
+    // Helper: use data value if explicitly set, else keep existing, else default
+    const keep = (dKey, bKey, def) => data[dKey] !== undefined ? data[dKey] : (b[bKey] !== undefined ? b[bKey] : def);
     return {
-      username: String(username).toLowerCase(),
-      display_name: data.displayName || base.displayName || username,
-      tg_id: data.tgId || base.tgId || String(username),
-      tg_username: data.tgUsername || base.tgUsername || '',
-      tg_photo: data.tgPhotoUrl || base.tgPhotoUrl || '',
-      high_score: data.highScore !== undefined ? data.highScore : (base.highScore || 0),
-      total_coins: data.totalCoins !== undefined ? data.totalCoins : (base.totalCoins || 0),
-      spendable_coins: data.spendableCoins !== undefined ? data.spendableCoins : (base.spendableCoins || 0),
-      games_played: data.gamesPlayed !== undefined ? data.gamesPlayed : (base.gamesPlayed || 0),
-      total_distance: data.totalDistance !== undefined ? data.totalDistance : (base.totalDistance || 0),
-      owned_chars: data.ownedChars || base.ownedChars || ['grey'],
-      equipped_char: data.equippedChar || base.equippedChar || 'grey',
-      join_date: base.joinDate || Date.now(),
-      last_played: Date.now()
+      username:       String(username).toLowerCase(),
+      display_name:   data.displayName || b.displayName || String(username),
+      tg_id:          data.tgId        || b.tgId        || String(username),
+      tg_username:    data.tgUsername  || b.tgUsername  || '',
+      tg_photo:       data.tgPhotoUrl  || b.tgPhotoUrl  || '',
+      high_score:     keep('highScore',     'highScore',     0),
+      total_coins:    keep('totalCoins',    'totalCoins',    0),
+      spendable_coins:keep('spendableCoins','spendableCoins',0),
+      games_played:   keep('gamesPlayed',   'gamesPlayed',   0),
+      total_distance: keep('totalDistance', 'totalDistance', 0),
+      owned_chars:    data.ownedChars   || b.ownedChars   || ['grey'],
+      equipped_char:  data.equippedChar || b.equippedChar || 'grey',
+      join_date:      b.joinDate        || Date.now(),
+      last_played:    Date.now()
     };
   },
   _toLocal(row) {
@@ -275,20 +319,40 @@ const DB = {
   },
 
   async updateScore(n, score, coins, dist) {
-    const p = SUPA._cacheGet(n) || { highScore:0, totalCoins:0, spendableCoins:0, gamesPlayed:0, totalDistance:0, ownedChars:['grey'], equippedChar:'grey' };
+    // Load fresh from Supabase to get latest coins (in case played on another device)
+    let p = SUPA._cacheGet(n);
+    if (!p) {
+      try { p = await SUPA.getPlayer(n); } catch(e) {}
+    }
+    p = p || { highScore:0, totalCoins:0, spendableCoins:0, gamesPlayed:0, totalDistance:0, ownedChars:['grey'], equippedChar:'grey' };
+
     const updated = {
-      displayName: p.displayName || n,
-      highScore: Math.max(p.highScore || 0, score),
-      totalCoins: (p.totalCoins || 0) + coins,
-      spendableCoins: (p.spendableCoins || 0) + coins,
-      gamesPlayed: (p.gamesPlayed || 0) + 1,
-      totalDistance: (p.totalDistance || 0) + dist,
-      ownedChars: p.ownedChars || ['grey'],
-      equippedChar: p.equippedChar || 'grey'
+      displayName:    p.displayName    || n,
+      tgId:           p.tgId           || n,
+      tgUsername:     p.tgUsername     || '',
+      tgPhotoUrl:     p.tgPhotoUrl     || '',
+      highScore:      Math.max(p.highScore     || 0, score),
+      totalCoins:     (p.totalCoins    || 0) + coins,
+      spendableCoins: (p.spendableCoins|| 0) + coins,
+      gamesPlayed:    (p.gamesPlayed   || 0) + 1,
+      totalDistance:  (p.totalDistance || 0) + Math.floor(dist),
+      ownedChars:     p.ownedChars     || ['grey'],
+      equippedChar:   p.equippedChar   || 'grey'
     };
+
+    // Update cache immediately so UI shows new values
     SUPA._cacheSet(n, updated);
-    SUPA.upsertPlayer(n, updated); // fire and forget
-    return updated;
+
+    // Save to Supabase — await it properly this time
+    try {
+      const saved = await SUPA.upsertPlayer(n, updated);
+      if (saved) SUPA._cacheSet(n, saved);
+      console.log('[Score saved]', saved?.highScore, 'coins:', saved?.totalCoins);
+    } catch(e) {
+      console.error('[Score save failed]', e);
+    }
+
+    return SUPA._cacheGet(n) || updated;
   },
 
   async buyChar(n, charId, price) {
@@ -319,12 +383,11 @@ const DB = {
   async leaderboard(lim=20) { return await SUPA.leaderboard(lim); },
   async resetScores() { await SUPA.resetScores(); },
   async resetAll() {
-    const all = await SUPA.getAllPlayers();
-    // delete all players
-    for (const p of all) await SUPA.deletePlayer(p.displayName);
+    // Delete all rows via PATCH won't work, use DELETE with neq filter
+    await SUPA.query('DELETE', 'players?username=neq.____IMPOSSIBLE____');
     SUPA._clearCache();
   },
-  async deletePlayer(n) { await SUPA.deletePlayer(n); },
+  async deletePlayer(n) { await SUPA.deletePlayer(String(n).toLowerCase()); },
   async getAllPlayers() { return await SUPA.getAllPlayers(); },
 
   currentUser() { return localStorage.getItem(this.KC) || null; },
@@ -340,12 +403,12 @@ function showScreen(id){
 }
 
 // ═══ TELEGRAM AUTH ════════════════════════════════════════════
-// Global callback — Telegram widget calls this automatically after login
+// ── Global TG auth handler — called by widget (browser) OR Mini App button ──
 window.onTelegramAuth = async function(tgUser) {
   showConnecting(true);
   try {
-    const tgId       = String(tgUser.id);
-    const displayName = (tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '');
+    const tgId        = String(tgUser.id);
+    const displayName = ((tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '')).trim() || 'Alien Runner';
     const username    = tgUser.username || displayName;
 
     App.user          = tgId;
@@ -357,6 +420,7 @@ window.onTelegramAuth = async function(tgUser) {
     DB.setUser(tgId);
     SFX.wake();
 
+    // Save/update profile in Supabase
     await DB.upsert(tgId, {
       displayName : displayName,
       tgId        : tgId,
@@ -366,17 +430,23 @@ window.onTelegramAuth = async function(tgUser) {
 
     SFX.play('start');
     showConnecting(false);
+
+    // If Mini App — notify Telegram that login succeeded
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+    }
+
     await loadLogin_toMenu();
   } catch(e) {
     showConnecting(false);
     const errEl = document.getElementById('loginError');
-    if(errEl) errEl.textContent = '⚠ CONNECTION ERROR — CHECK INTERNET';
+    if (errEl) errEl.textContent = '⚠ CONNECTION ERROR — CHECK INTERNET';
     console.error('TG auth error:', e);
   }
 };
 
 const TGAuth = {
-  ADMIN_PASS: 'TRUEALIENBELIEVER0$',
+  ADMIN_PASS: 'admin123',
   _adminVisible: false,
   toggleAdmin() {
     this._adminVisible = !this._adminVisible;
@@ -425,22 +495,85 @@ document.getElementById('viewLeaderBtn').addEventListener('click',()=>{ App.prev
   draw();
 })();
 
-window.addEventListener('DOMContentLoaded',async ()=>{
-  document.addEventListener('touchstart',()=>SFX.wake(),{once:true});
-  document.addEventListener('mousedown',()=>SFX.wake(),{once:true});
-  const saved=DB.currentUser();
-  if(saved){
+window.addEventListener('DOMContentLoaded', async () => {
+  document.addEventListener('touchstart', ()=>SFX.wake(), {once:true});
+  document.addEventListener('mousedown',  ()=>SFX.wake(), {once:true});
+
+  // ── STEP 1: Check if running as Telegram Mini App ──
+  const tgWebApp = window.Telegram && window.Telegram.WebApp;
+  const isMiniApp = tgWebApp && tgWebApp.initDataUnsafe && tgWebApp.initDataUnsafe.user && tgWebApp.initDataUnsafe.user.id;
+
+  if (isMiniApp) {
+    // ══ MINI APP MODE — instant login, zero taps ══
+    tgWebApp.ready();
+    tgWebApp.expand(); // go fullscreen inside Telegram
+
+    const tgUser = tgWebApp.initDataUnsafe.user;
+    const tgId   = String(tgUser.id);
+
+    // Set theme colors to match game
+    tgWebApp.setHeaderColor('#000814');
+    tgWebApp.setBackgroundColor('#000814');
+
+    // Show the Mini App login panel with user's info
+    const detectEl    = document.getElementById('tgDetecting');
+    const miniLoginEl = document.getElementById('miniAppLogin');
+    const browserEl   = document.getElementById('browserLogin');
+    const nameEl      = document.getElementById('miniAppName');
+    const idEl        = document.getElementById('miniAppIdText');
+    const avatarEl    = document.getElementById('miniAppAvatar');
+    const btnEl       = document.getElementById('miniAppBtn');
+
+    if (detectEl)    detectEl.classList.add('hidden');
+    if (browserEl)   browserEl.classList.add('hidden');
+    if (miniLoginEl) miniLoginEl.classList.remove('hidden');
+
+    const displayName = (tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '');
+    if (nameEl) nameEl.textContent = displayName || 'Alien Runner';
+    if (idEl)   idEl.textContent   = 'TG ID: ' + tgId;
+
+    // Show profile photo if available
+    if (avatarEl && tgUser.photo_url) {
+      avatarEl.innerHTML = `<img src="${tgUser.photo_url}" alt="avatar" onerror="this.parentElement.textContent='👽'">`;
+    }
+
+    // Tap START PLAYING → auto login
+    if (btnEl) {
+      btnEl.addEventListener('click', async () => {
+        btnEl.textContent = '⟳ CONNECTING...';
+        btnEl.disabled = true;
+        await window.onTelegramAuth(tgUser);
+      });
+    }
+
+    return; // Don't check saved session — show fresh Mini App login
+  }
+
+  // ── STEP 2: Browser mode — check saved session first ──
+  const detectEl  = document.getElementById('tgDetecting');
+  const browserEl = document.getElementById('browserLogin');
+
+  // Try to restore saved session
+  const saved = DB.currentUser();
+  if (saved) {
     try {
       const p = await DB.load(saved);
-      if(p){
-        App.user = saved;
+      if (p) {
+        App.user          = saved;
         App.tgDisplayName = p.displayName || saved;
-        App.tgUsername = p.tgUsername || saved;
-        App.isAdmin = saved.startsWith('admin_');
-        await loadLogin_toMenu(); return;
+        App.tgUsername    = p.tgUsername  || saved;
+        App.isAdmin       = saved === 'admin';
+        if (detectEl)  detectEl.classList.add('hidden');
+        if (browserEl) browserEl.classList.remove('hidden');
+        await loadLogin_toMenu();
+        return;
       }
     } catch(e) {}
   }
+
+  // No session — show browser widget
+  if (detectEl)  detectEl.classList.add('hidden');
+  if (browserEl) browserEl.classList.remove('hidden');
   showScreen('loginScreen');
 });
 
@@ -470,7 +603,20 @@ async function loadMenu(){
 document.getElementById('playBtn').addEventListener('click',startGame);
 document.getElementById('shopBtn').addEventListener('click',()=>{renderShop();showScreen('shopScreen');});
 document.getElementById('menuLeaderBtn').addEventListener('click',()=>{App.prevScreen='menuScreen';renderLeaderboard();});
-document.getElementById('logoutBtn').addEventListener('click',()=>{App.user=null;App.isAdmin=false;App.tgDisplayName=null;App.tgUsername=null;App.tgPhotoUrl=null;SUPA._clearCache();DB.clearUser();document.getElementById('loginError').textContent='';document.getElementById('adminPassInput').value='';document.getElementById('adminOverride').classList.add('hidden');showScreen('loginScreen');});
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  App.user=null; App.isAdmin=false; App.tgDisplayName=null; App.tgUsername=null; App.tgPhotoUrl=null;
+  SUPA._clearCache(); DB.clearUser();
+  const errEl = document.getElementById('loginError');
+  if (errEl) errEl.textContent = '';
+  const apEl = document.getElementById('adminPassInput');
+  if (apEl) apEl.value = '';
+  const aoEl = document.getElementById('adminOverride');
+  if (aoEl) aoEl.classList.add('hidden');
+  // If Mini App — re-show the start button (don't reload page)
+  const miniBtn = document.getElementById('miniAppBtn');
+  if (miniBtn) { miniBtn.textContent = 'START PLAYING'; miniBtn.disabled = false; }
+  showScreen('loginScreen');
+});
 
 let menuAnimId=null;
 function startMenuBg(){
@@ -688,10 +834,15 @@ document.getElementById('shopBackBtn').addEventListener('click',async()=>{
 });
 
 function updateMenuWallet(){
-  const p=DB.get(App.user);
-  if(p){
-    document.getElementById('menuCoins').textContent=(p.spendableCoins||0).toLocaleString();
-    document.getElementById('menuBestScore').textContent=`BEST: ${(p.highScore||0).toLocaleString()}`;
+  const p = DB.get(App.user);
+  if (p) {
+    const coinsEl = document.getElementById('menuCoins');
+    const bestEl  = document.getElementById('menuBestScore');
+    if (coinsEl) coinsEl.textContent = (p.spendableCoins||0).toLocaleString();
+    if (bestEl)  bestEl.textContent  = `BEST: ${(p.highScore||0).toLocaleString()}`;
+    // Also update shop wallet if open
+    const shopCoinsEl = document.getElementById('shopCoins');
+    if (shopCoinsEl) shopCoinsEl.textContent = (p.spendableCoins||0).toLocaleString();
   }
 }
 
@@ -1054,7 +1205,7 @@ const Game={
     this.spawnParticles(p.x+p.w/2,p.y+p.h/2,'#ff3333',22,'explode');
     SFX.play(this.lives<=0?'death':'hit');
     updateLives();
-    if(this.lives<=0)setTimeout(()=>this.endGame(),500);
+    if(this.lives<=0)setTimeout(()=>this.endGame().catch(e=>console.error(e)),500);
   },
 
   collectCoin(c){
@@ -1307,24 +1458,36 @@ const Game={
 
   loop(){this.update();this.draw();if(this.running)this.animId=requestAnimationFrame(()=>this.loop());},
 
-  endGame(){
-    this.running=false;cancelAnimationFrame(this.animId);SFX.stopMusic();
-    // Show game over screen immediately — don't wait for DB
-    const localBest = (DB.get(App.user)||{}).highScore||0;
-    const newBest = this.score > localBest;
-    document.getElementById('finalScore').textContent=this.score.toLocaleString();
-    document.getElementById('finalCoins').textContent=this.coins;
-    document.getElementById('finalDistance').textContent=Math.floor(this.distance)+'m';
-    document.getElementById('finalCombo').textContent=this.maxCombo+'x';
-    document.getElementById('newBestMsg').textContent=newBest?'★ NEW PERSONAL BEST! ★':`BEST: ${Math.max(localBest,this.score).toLocaleString()}`;
-    document.getElementById('gameoverTitle').textContent=this.score>2000?'MISSION COMPLETE':'MISSION FAILED';
-    document.getElementById('gameoverIcon').textContent=this.score>2000?'🛸':'💥';
-    if(newBest)SFX.play('newbest');
+  async endGame(){
+    this.running=false; cancelAnimationFrame(this.animId); SFX.stopMusic();
+
+    // Show game over screen instantly with current run data
+    const localBest = (DB.get(App.user)||{}).highScore || 0;
+    const isNewBest  = this.score > localBest;
+
+    document.getElementById('finalScore').textContent    = this.score.toLocaleString();
+    document.getElementById('finalCoins').textContent    = this.coins;
+    document.getElementById('finalDistance').textContent = Math.floor(this.distance)+'m';
+    document.getElementById('finalCombo').textContent    = this.maxCombo+'x';
+    document.getElementById('newBestMsg').textContent    = isNewBest ? '★ NEW PERSONAL BEST! ★' : `BEST: ${Math.max(localBest,this.score).toLocaleString()}`;
+    document.getElementById('gameoverTitle').textContent = this.score>2000 ? 'MISSION COMPLETE' : 'MISSION FAILED';
+    document.getElementById('gameoverIcon').textContent  = this.score>2000 ? '🛸' : '💥';
+    if (isNewBest) SFX.play('newbest');
     showScreen('gameOverScreen');
-    // Save to DB async in background — never blocks UI
-    DB.updateScore(App.user,this.score,this.coins,Math.floor(this.distance))
-      .then(()=>updateMenuWallet())
-      .catch(e=>console.warn('Score save failed:',e));
+
+    // Save to Supabase — this is the critical call
+    try {
+      const saved = await DB.updateScore(App.user, this.score, this.coins, Math.floor(this.distance));
+      // Update game over screen with confirmed DB values
+      if (saved) {
+        const confirmedBest = saved.highScore || 0;
+        document.getElementById('newBestMsg').textContent =
+          this.score >= confirmedBest ? '★ NEW PERSONAL BEST! ★' : `BEST: ${confirmedBest.toLocaleString()}`;
+      }
+      updateMenuWallet();
+    } catch(e) {
+      console.error('[endGame save error]', e);
+    }
   }
 };
 
@@ -1430,4 +1593,4 @@ document.getElementById('backFromAdmin').addEventListener('click',()=>{if(App.is
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-console.log('%c🛸 ALIEN DASH v5 — Telegram Login · Supabase · Shop · Believer · Slow→Fast!','color:#00f5ff;font-size:14px;font-weight:bold');
+console.log('%c🛸 ALIEN DASH v6 — Scores Fixed · Mini App · Supabase · All Features LIVE!','color:#00f5ff;font-size:14px;font-weight:bold');
