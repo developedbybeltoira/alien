@@ -340,122 +340,81 @@ function showScreen(id){
 }
 
 // ═══ TELEGRAM AUTH ════════════════════════════════════════════
+// Global callback — Telegram widget calls this automatically after login
+window.onTelegramAuth = async function(tgUser) {
+  showConnecting(true);
+  try {
+    const tgId       = String(tgUser.id);
+    const displayName = (tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '');
+    const username    = tgUser.username || displayName;
+
+    App.user          = tgId;
+    App.tgDisplayName = displayName;
+    App.tgUsername    = username;
+    App.tgPhotoUrl    = tgUser.photo_url || null;
+    App.isAdmin       = false;
+
+    DB.setUser(tgId);
+    SFX.wake();
+
+    await DB.upsert(tgId, {
+      displayName : displayName,
+      tgId        : tgId,
+      tgUsername  : username,
+      tgPhotoUrl  : tgUser.photo_url || null
+    });
+
+    SFX.play('start');
+    showConnecting(false);
+    await loadLogin_toMenu();
+  } catch(e) {
+    showConnecting(false);
+    const errEl = document.getElementById('loginError');
+    if(errEl) errEl.textContent = '⚠ CONNECTION ERROR — CHECK INTERNET';
+    console.error('TG auth error:', e);
+  }
+};
+
 const TGAuth = {
-  ADMIN_PASS: 'admin123', // change this to your admin password
+  ADMIN_PASS: 'admin123',
   _adminVisible: false,
-
-  // Called when Telegram widget returns user data
-  async onAuth(tgUser) {
-    showConnecting(true);
-    try {
-      // tgUser: { id, first_name, last_name, username, photo_url, auth_date, hash }
-      const tgId = String(tgUser.id);
-      const displayName = tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '');
-      const username = tgUser.username || displayName;
-
-      App.user = tgId;
-      App.tgDisplayName = displayName;
-      App.tgUsername = username;
-      App.tgPhotoUrl = tgUser.photo_url || null;
-      App.isAdmin = false;
-
-      DB.setUser(tgId);
-      SFX.wake();
-
-      // Upsert into Supabase with TG info
-      await DB.upsert(tgId, {
-        displayName: displayName,
-        tgId: tgId,
-        tgUsername: username,
-        tgPhotoUrl: tgUser.photo_url || null
-      });
-
-      SFX.play('start');
-      showConnecting(false);
-      await loadLogin_toMenu();
-    } catch(e) {
-      showConnecting(false);
-      document.getElementById('loginError').textContent = '⚠ CONNECTION ERROR — CHECK INTERNET';
-    }
-  },
-
-  openLogin() {
-    // Telegram Login Widget — opens Telegram OAuth popup
-    // Bot username: change 'AlienDashBot' to YOUR bot username
-    // Create a bot at @BotFather, enable login widget, set domain
-    const botUsername = 'aliendashbot'; // ← CHANGE THIS to your bot username
-
-    // Try Telegram widget popup approach
-    if (window.Telegram && window.Telegram.Login) {
-      window.Telegram.Login.auth(
-        { bot_id: botUsername, request_access: 'write' },
-        (data) => { if (data) TGAuth.onAuth(data); }
-      );
-    } else {
-      // Fallback: open Telegram OAuth in popup window
-      const authUrl = `https://oauth.telegram.org/auth?bot_id=${botUsername}&origin=${encodeURIComponent(location.origin)}&return_to=${encodeURIComponent(location.href)}&request_access=write`;
-      const popup = window.open(authUrl, 'tgauth', 'width=550,height=600,scrollbars=yes');
-      // Listen for postMessage from popup
-      const handler = (event) => {
-        if (event.data && event.data.id) {
-          window.removeEventListener('message', handler);
-          if (popup) popup.close();
-          TGAuth.onAuth(event.data);
-        }
-      };
-      window.addEventListener('message', handler);
-    }
-  },
-
   toggleAdmin() {
     this._adminVisible = !this._adminVisible;
     const el = document.getElementById('adminOverride');
     el.classList.toggle('hidden', !this._adminVisible);
     if (this._adminVisible) document.getElementById('adminPassInput').focus();
   },
-
   async adminLogin() {
-    const pass = document.getElementById('adminPassInput').value.trim();
-    const err = document.getElementById('loginError');
-    if (!pass) { err.textContent = '⚠ ENTER ADMIN PASSWORD'; return; }
-    if (pass !== this.ADMIN_PASS) { err.textContent = '⚠ WRONG ADMIN PASSWORD'; return; }
-
+    const pass = (document.getElementById('adminPassInput').value||'').trim();
+    const err  = document.getElementById('loginError');
+    if (!pass) { err.textContent='⚠ ENTER ADMIN PASSWORD'; return; }
+    if (pass !== this.ADMIN_PASS) { err.textContent='⚠ WRONG PASSWORD'; return; }
     showConnecting(true);
-    App.user = 'admin_' + pass.substring(0,4);
-    App.tgDisplayName = 'ADMIN';
-    App.tgUsername = 'admin';
-    App.isAdmin = true;
-    DB.setUser(App.user);
+    App.user='admin'; App.tgDisplayName='ADMIN'; App.tgUsername='admin'; App.isAdmin=true;
+    DB.setUser('admin');
     try {
-      await DB.upsert(App.user, { displayName: 'ADMIN', tgId: App.user });
+      await DB.upsert('admin',{displayName:'ADMIN',tgId:'admin'});
       showConnecting(false);
       await renderAdmin(); showScreen('adminScreen');
-    } catch(e) {
-      showConnecting(false);
-      err.textContent = '⚠ DB ERROR';
-    }
+    } catch(e) { showConnecting(false); err.textContent='⚠ DB ERROR: '+e.message; }
   }
 };
 
-// Global callback for Telegram widget (called by TG script)
-window.onTelegramAuth = function(user) { TGAuth.onAuth(user); };
-
-// Show/hide connecting spinner
 function showConnecting(show) {
   let el = document.getElementById('connectingOverlay');
   if (!el) {
     el = document.createElement('div');
     el.id = 'connectingOverlay';
-    el.className = 'connecting-overlay' + (show ? '' : ' hidden');
+    el.className = 'connecting-overlay hidden';
     el.innerHTML = '<div class="connecting-spinner"></div><div class="connecting-text">CONNECTING...</div>';
     document.body.appendChild(el);
   }
   el.classList.toggle('hidden', !show);
 }
 
-document.getElementById('adminLoginBtn').addEventListener('click', () => TGAuth.adminLogin());
-document.getElementById('adminPassInput').addEventListener('keydown', e => { if(e.key==='Enter') TGAuth.adminLogin(); });
-document.getElementById('viewLeaderBtn').addEventListener('click',()=>{App.prevScreen='loginScreen';renderLeaderboard();});
+document.getElementById('adminLoginBtn').addEventListener('click', ()=>TGAuth.adminLogin());
+document.getElementById('adminPassInput').addEventListener('keydown', e=>{ if(e.key==='Enter') TGAuth.adminLogin(); });
+document.getElementById('viewLeaderBtn').addEventListener('click',()=>{ App.prevScreen='loginScreen'; renderLeaderboard(); });
 
 // Login BG stars
 (function(){
@@ -1350,18 +1309,22 @@ const Game={
 
   endGame(){
     this.running=false;cancelAnimationFrame(this.animId);SFX.stopMusic();
-    const updated=DB.updateScore(App.user,this.score,this.coins,Math.floor(this.distance));
+    // Show game over screen immediately — don't wait for DB
+    const localBest = (DB.get(App.user)||{}).highScore||0;
+    const newBest = this.score > localBest;
     document.getElementById('finalScore').textContent=this.score.toLocaleString();
     document.getElementById('finalCoins').textContent=this.coins;
     document.getElementById('finalDistance').textContent=Math.floor(this.distance)+'m';
     document.getElementById('finalCombo').textContent=this.maxCombo+'x';
-    const newBest=this.score>=updated.highScore;
-    document.getElementById('newBestMsg').textContent=newBest?'★ NEW PERSONAL BEST! ★':`BEST: ${updated.highScore.toLocaleString()}`;
+    document.getElementById('newBestMsg').textContent=newBest?'★ NEW PERSONAL BEST! ★':`BEST: ${Math.max(localBest,this.score).toLocaleString()}`;
     document.getElementById('gameoverTitle').textContent=this.score>2000?'MISSION COMPLETE':'MISSION FAILED';
     document.getElementById('gameoverIcon').textContent=this.score>2000?'🛸':'💥';
     if(newBest)SFX.play('newbest');
-    updateMenuWallet();
     showScreen('gameOverScreen');
+    // Save to DB async in background — never blocks UI
+    DB.updateScore(App.user,this.score,this.coins,Math.floor(this.distance))
+      .then(()=>updateMenuWallet())
+      .catch(e=>console.warn('Score save failed:',e));
   }
 };
 
