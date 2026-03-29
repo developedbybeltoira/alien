@@ -9,47 +9,23 @@
 </head>
 <body>
 
-<!-- LOGIN SCREEN -->
+<!-- LOGIN -->
 <div id="loginScreen" class="screen active">
   <canvas id="loginBgCanvas"></canvas>
   <div class="login-layout">
     <div class="login-art-panel">
       <svg class="login-alien-svg" viewBox="0 0 480 600" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <radialGradient id="lgBurst" cx="50%" cy="60%" r="70%">
-            <stop offset="0%" stop-color="#d4880a" stop-opacity="0.95"/>
-            <stop offset="50%" stop-color="#7a4200" stop-opacity="0.5"/>
-            <stop offset="100%" stop-color="#0a0400" stop-opacity="0"/>
-          </radialGradient>
-          <radialGradient id="lgHead" cx="38%" cy="32%" r="58%">
-            <stop offset="0%" stop-color="#ccc5a8"/>
-            <stop offset="55%" stop-color="#9a9278"/>
-            <stop offset="100%" stop-color="#5a5040"/>
-          </radialGradient>
-          <radialGradient id="lgEye" cx="30%" cy="28%" r="68%">
-            <stop offset="0%" stop-color="#1c1c40"/>
-            <stop offset="100%" stop-color="#050508"/>
-          </radialGradient>
-          <radialGradient id="lgBody" cx="40%" cy="35%" r="60%">
-            <stop offset="0%" stop-color="#a0a885"/>
-            <stop offset="100%" stop-color="#606848"/>
-          </radialGradient>
-          <filter id="lgGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="8" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-          <filter id="lgSoft" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="18" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
+          <radialGradient id="lgBurst" cx="50%" cy="60%" r="70%"><stop offset="0%" stop-color="#d4880a" stop-opacity="0.95"/><stop offset="50%" stop-color="#7a4200" stop-opacity="0.5"/><stop offset="100%" stop-color="#0a0400" stop-opacity="0"/></radialGradient>
+          <radialGradient id="lgHead" cx="38%" cy="32%" r="58%"><stop offset="0%" stop-color="#ccc5a8"/><stop offset="55%" stop-color="#9a9278"/><stop offset="100%" stop-color="#5a5040"/></radialGradient>
+          <radialGradient id="lgEye" cx="30%" cy="28%" r="68%"><stop offset="0%" stop-color="#1c1c40"/><stop offset="100%" stop-color="#050508"/></radialGradient>
+          <radialGradient id="lgBody" cx="40%" cy="35%" r="60%"><stop offset="0%" stop-color="#a0a885"/><stop offset="100%" stop-color="#606848"/></radialGradient>
+          <filter id="lgGlow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="lgSoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
         <ellipse cx="240" cy="360" rx="280" ry="260" fill="url(#lgBurst)"/>
         <g opacity="0.28" stroke="#e8a020" stroke-width="1.5">
-          <line x1="240" y1="360" x2="40" y2="10"/><line x1="240" y1="360" x2="120" y2="0"/>
-          <line x1="240" y1="360" x2="200" y2="0"/><line x1="240" y1="360" x2="280" y2="0"/>
-          <line x1="240" y1="360" x2="360" y2="0"/><line x1="240" y1="360" x2="440" y2="10"/>
-          <line x1="240" y1="360" x2="480" y2="80"/><line x1="240" y1="360" x2="480" y2="200"/>
-          <line x1="240" y1="360" x2="0" y2="150"/><line x1="240" y1="360" x2="0" y2="320"/>
+          <line x1="240" y1="360" x2="40" y2="10"/><line x1="240" y1="360" x2="120" y2="0"/><line x1="240" y1="360" x2="200" y2="0"/><line x1="240" y1="360" x2="280" y2="0"/><line x1="240" y1="360" x2="360" y2="0"/><line x1="240" y1="360" x2="440" y2="10"/><line x1="240" y1="360" x2="480" y2="80"/><line x1="240" y1="360" x2="480" y2="200"/><line x1="240" y1="360" x2="0" y2="150"/><line x1="240" y1="360" x2="0" y2="320"/>
         </g>
         <ellipse cx="200" cy="598" rx="160" ry="25" fill="rgba(80,40,0,0.4)"/>
         <ellipse cx="200" cy="592" rx="70" ry="14" fill="rgba(0,0,0,0.45)"/>
@@ -61,7 +37,6 @@
         <path d="M162,400 Q200,390 238,400" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
         <path d="M160,422 Q200,412 240,422" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
         <path d="M162,444 Q200,434 238,444" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
-        <path d="M165,466 Q200,456 235,466" stroke="rgba(0,0,0,0.1)" stroke-width="2" fill="none"/>
         <path d="M135,390 Q85,340 62,275" stroke="#808870" stroke-width="20" stroke-linecap="round" fill="none"/>
         <ellipse cx="58" cy="268" rx="20" ry="16" fill="#808870"/>
         <line x1="42" y1="255" x2="25" y2="232" stroke="#808870" stroke-width="8" stroke-linecap="round"/>
@@ -92,7 +67,7 @@
           <ellipse cx="390" cy="220" rx="22" ry="38" fill="none" stroke="#969696" stroke-width="1.2" opacity="0.8"/>
           <line x1="350" y1="207" x2="430" y2="207" stroke="#969696" stroke-width="1.2" opacity="0.8"/>
           <line x1="350" y1="233" x2="430" y2="233" stroke="#969696" stroke-width="1.2" opacity="0.8"/>
-          <text x="390" y="288" font-family="Georgia,serif" font-size="12" fill="#ffd700" text-anchor="middle" font-weight="bold" filter="url(#lgGlow)">I Believe</text>
+          <text x="390" y="288" font-family="Georgia,serif" font-size="13" fill="#ffd700" text-anchor="middle" font-weight="bold">I Believe</text>
           <circle cx="390" cy="220" r="62" fill="none" stroke="rgba(255,230,100,0.3)" stroke-width="6"/>
         </g>
       </svg>
@@ -106,17 +81,17 @@
         <div class="login-logo-row">
           <span class="login-logo-icon">🛸</span>
           <div>
-            <h1 class="game-title">ALIEN DASH</h1>
+            <h1 class="game-title">$IBLV: ALIEN DASH</h1>
             <p class="game-subtitle">COSMIC STREET RUNNER</p>
           </div>
         </div>
         <p class="login-welcome-tag">⚡ IDENTIFY YOURSELF, EARTHLING</p>
         <div class="input-group">
-          <label>CALLSIGN (USERNAME)</label>
-          <input type="text" id="usernameInput" placeholder="Enter your name..." maxlength="16" autocomplete="off">
+          <label>telegram (USERNAME)</label>
+          <input type="text" id="usernameInput" placeholder="Enter your telegram username  name..." maxlength="16" autocomplete="off">
         </div>
         <div class="input-group">
-          <label>ACCESS CODE <span class="label-hint">(required · admin = admin123)</span></label>
+          <label>gamer code  <span class="label-hint">(required · a unique pin )</span></label>
           <input type="password" id="passwordInput" placeholder="Enter access code..." maxlength="20" autocomplete="off">
         </div>
         <div class="login-error" id="loginError"></div>
@@ -134,9 +109,40 @@
     <div class="welcome-msg" id="welcomeMsg"></div>
     <h1 class="game-title-big">ALIEN DASH</h1>
     <div class="best-score-display" id="menuBestScore"></div>
+    <div class="menu-wallet" id="menuWallet">🪙 <span id="menuCoins">0</span> TOTAL COINS</div>
     <button class="btn-play" id="playBtn">▶ PLAY NOW</button>
+    <button class="btn-shop" id="shopBtn">🛸 CHARACTER SHOP</button>
     <button class="btn-secondary" id="menuLeaderBtn">🏆 LEADERBOARD</button>
     <button class="btn-secondary" id="logoutBtn">↩ LOGOUT</button>
+  </div>
+</div>
+
+<!-- CHARACTER SHOP -->
+<div id="shopScreen" class="screen">
+  <div class="shop-overlay">
+    <div class="shop-header">
+      <button class="shop-back-btn" id="shopBackBtn">← BACK</button>
+      <h2 class="shop-title">🛸 CHARACTER SHOP</h2>
+      <div class="shop-wallet-badge">🪙 <span id="shopCoins">0</span></div>
+    </div>
+    <p class="shop-subtitle">Earn coins in-game · Tap a card to preview · Unlock legendary runners</p>
+    <div class="shop-grid" id="shopGrid"></div>
+  </div>
+</div>
+
+<!-- CHARACTER PREVIEW MODAL -->
+<div id="charModal" class="char-modal hidden">
+  <div class="char-modal-box">
+    <button class="char-close" id="charCloseBtn">✕</button>
+    <canvas id="charPreviewCanvas" width="220" height="280"></canvas>
+    <div class="char-modal-name" id="charModalName"></div>
+    <div class="char-modal-desc" id="charModalDesc"></div>
+    <div class="char-modal-perk" id="charModalPerk"></div>
+    <div class="char-modal-price" id="charModalPrice"></div>
+    <div class="char-modal-btns">
+      <button class="btn-play char-buy-btn" id="charBuyBtn">🔓 UNLOCK</button>
+      <button class="btn-play char-equip-btn" id="charEquipBtn" style="display:none;background:linear-gradient(135deg,#00aa44,#00ff88);color:#000">✓ EQUIP</button>
+    </div>
   </div>
 </div>
 
@@ -167,6 +173,8 @@
     <div class="countdown-num" id="countdownNum">3</div>
     <div class="countdown-sub" id="countdownSub"></div>
   </div>
+  <!-- BELIEVER POPUP -->
+  <div id="believerPopup" class="believer-popup hidden"></div>
   <button id="pauseBtn" class="hud-btn" style="top:12px;right:16px">⏸</button>
   <button id="muteBtn" class="hud-btn" style="top:58px;right:16px">🔊</button>
   <div id="tapHint" class="tap-hint">TAP TO JUMP · DOUBLE TAP = DOUBLE JUMP</div>
@@ -227,6 +235,17 @@
     <button class="btn-secondary" id="quitBtn">✕ QUIT</button>
   </div>
 </div>
+
+<!-- MUSIC FILE INSTRUCTIONS (hidden, for developer reference) -->
+<!--
+  🎵 CUSTOM BACKGROUND MUSIC SETUP:
+  1. Put your music file in the SAME folder as index.html
+  2. Name it exactly:  believer.mp3
+     (or .ogg / .wav — just update the src in script.js line ~25)
+  3. Supported formats: MP3, OGG, WAV, AAC (M4A)
+  4. The game will auto-detect and play it on loop
+  5. If file not found, synth music plays as fallback
+-->
 
 <script src="script.js"></script>
 </body>
