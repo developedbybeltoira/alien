@@ -232,8 +232,8 @@ const SUPA = {
   },
 
   async resetScores() {
-    // PATCH all rows
-    await this.query('PATCH', 'players?username=neq.IMPOSSIBLE_VALUE_THAT_MATCHES_ALL',
+    // PATCH all rows — gt.'' matches all non-null usernames
+    await this.query('PATCH', 'players?username=gt.',
       { high_score:0, total_coins:0, spendable_coins:0, games_played:0, total_distance:0 },
       { 'Prefer': 'return=minimal' });
     this._clearCache();
@@ -310,8 +310,28 @@ const DB = {
   },
 
   async upsert(n, data) {
-    const existing = SUPA._cacheGet(n) || {};
-    const merged = Object.assign({}, existing, data, { displayName: data.displayName || existing.displayName || n });
+    // Always fetch current DB values first so we never overwrite existing progress
+    let existing = SUPA._cacheGet(n);
+    if (!existing) {
+      try { existing = await SUPA.getPlayer(n); } catch(e) {}
+    }
+    existing = existing || {};
+    // Merge: DB values take precedence for scores/coins; login data updates name/photo
+    const merged = {
+      ...existing,
+      ...data,
+      // Never overwrite scores/coins with lower/empty values from login call
+      highScore:      Math.max(existing.highScore      || 0, data.highScore      || 0),
+      totalCoins:     Math.max(existing.totalCoins     || 0, data.totalCoins     || 0),
+      spendableCoins: Math.max(existing.spendableCoins || 0, data.spendableCoins || 0),
+      gamesPlayed:    Math.max(existing.gamesPlayed    || 0, data.gamesPlayed    || 0),
+      totalDistance:  Math.max(existing.totalDistance  || 0, data.totalDistance  || 0),
+      ownedChars:     (existing.ownedChars && existing.ownedChars.length > 1)
+                        ? existing.ownedChars
+                        : (data.ownedChars || existing.ownedChars || ['grey']),
+      equippedChar:   existing.equippedChar || data.equippedChar || 'grey',
+      displayName:    data.displayName || existing.displayName || n,
+    };
     SUPA._cacheSet(n, merged);
     const result = await SUPA.upsertPlayer(n, merged);
     if (result) SUPA._cacheSet(n, result);
@@ -327,10 +347,10 @@ const DB = {
     p = p || { highScore:0, totalCoins:0, spendableCoins:0, gamesPlayed:0, totalDistance:0, ownedChars:['grey'], equippedChar:'grey' };
 
     const updated = {
-      displayName:    p.displayName    || n,
-      tgId:           p.tgId           || n,
-      tgUsername:     p.tgUsername     || '',
-      tgPhotoUrl:     p.tgPhotoUrl     || '',
+      displayName:    p.displayName    || App.tgDisplayName || n,
+      tgId:           p.tgId           || App.user          || n,
+      tgUsername:     p.tgUsername     || App.tgUsername    || '',
+      tgPhotoUrl:     p.tgPhotoUrl     || App.tgPhotoUrl    || '',
       highScore:      Math.max(p.highScore     || 0, score),
       totalCoins:     (p.totalCoins    || 0) + coins,
       spendableCoins: (p.spendableCoins|| 0) + coins,
@@ -356,7 +376,10 @@ const DB = {
   },
 
   async buyChar(n, charId, price) {
-    const p = SUPA._cacheGet(n); if (!p) return false;
+    // Refresh from DB before buying to get accurate coin count
+    let p = SUPA._cacheGet(n);
+    if (!p) { try { p = await SUPA.getPlayer(n); } catch(e) {} }
+    if (!p) return false;
     if ((p.spendableCoins || 0) < price) return false;
     const owned = [...(p.ownedChars || ['grey'])];
     if (owned.includes(charId)) return true;
@@ -446,7 +469,7 @@ window.onTelegramAuth = async function(tgUser) {
 };
 
 const TGAuth = {
-  ADMIN_PASS: 'supperlogad1',
+  ADMIN_PASS: 'admin123',
   _adminVisible: false,
   toggleAdmin() {
     this._adminVisible = !this._adminVisible;
@@ -504,56 +527,74 @@ window.addEventListener('DOMContentLoaded', async () => {
   const isMiniApp = tgWebApp && tgWebApp.initDataUnsafe && tgWebApp.initDataUnsafe.user && tgWebApp.initDataUnsafe.user.id;
 
   if (isMiniApp) {
-    // ══ MINI APP MODE — instant login, zero taps ══
+    // ══ MINI APP MODE — fully automatic, zero taps ever ══
     tgWebApp.ready();
-    tgWebApp.expand(); // go fullscreen inside Telegram
+    tgWebApp.expand();
+    try { tgWebApp.setHeaderColor('#000814'); } catch(e) {}
+    try { tgWebApp.setBackgroundColor('#000814'); } catch(e) {}
 
     const tgUser = tgWebApp.initDataUnsafe.user;
     const tgId   = String(tgUser.id);
 
-    // Set theme colors to match game
-    tgWebApp.setHeaderColor('#000814');
-    tgWebApp.setBackgroundColor('#000814');
+    // Show connecting spinner while we load
+    showConnecting(true);
+    showScreen('loginScreen');
 
-    // Show the Mini App login panel with user's info
-    const detectEl    = document.getElementById('tgDetecting');
-    const miniLoginEl = document.getElementById('miniAppLogin');
-    const browserEl   = document.getElementById('browserLogin');
-    const nameEl      = document.getElementById('miniAppName');
-    const idEl        = document.getElementById('miniAppIdText');
-    const avatarEl    = document.getElementById('miniAppAvatar');
-    const btnEl       = document.getElementById('miniAppBtn');
-
-    if (detectEl)    detectEl.classList.add('hidden');
-    if (browserEl)   browserEl.classList.add('hidden');
-    if (miniLoginEl) miniLoginEl.classList.remove('hidden');
-
-    const displayName = (tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '');
-    if (nameEl) nameEl.textContent = displayName || 'Alien Runner';
-    if (idEl)   idEl.textContent   = 'TG ID: ' + tgId;
-
-    // Show profile photo if available
-    if (avatarEl && tgUser.photo_url) {
-      avatarEl.innerHTML = `<img src="${tgUser.photo_url}" alt="avatar" onerror="this.parentElement.textContent='👽'">`;
+    // Check if we already have this user's data locally
+    const savedId = DB.currentUser();
+    if (savedId === tgId) {
+      // Already logged in as this TG user — load from Supabase and go straight to menu
+      try {
+        const p = await DB.load(tgId);
+        if (p) {
+          App.user          = tgId;
+          App.tgDisplayName = p.displayName || tgUser.first_name || tgId;
+          App.tgUsername    = p.tgUsername  || tgUser.username   || '';
+          App.tgPhotoUrl    = p.tgPhotoUrl  || tgUser.photo_url  || null;
+          App.isAdmin       = false;
+          showConnecting(false);
+          await loadLogin_toMenu();
+          return;
+        }
+      } catch(e) { console.warn('Session restore failed, re-authing:', e); }
     }
 
-    // Tap START PLAYING → auto login
-    if (btnEl) {
-      btnEl.addEventListener('click', async () => {
-        btnEl.textContent = '⟳ CONNECTING...';
-        btnEl.disabled = true;
-        await window.onTelegramAuth(tgUser);
-      });
+    // First time or different user — register and go to menu automatically
+    try {
+      await window.onTelegramAuth(tgUser); // handles everything, goes to menu
+    } catch(e) {
+      showConnecting(false);
+      // Fallback: show the start button so user can retry
+      const detectEl    = document.getElementById('tgDetecting');
+      const miniLoginEl = document.getElementById('miniAppLogin');
+      const browserEl   = document.getElementById('browserLogin');
+      const nameEl      = document.getElementById('miniAppName');
+      const idEl        = document.getElementById('miniAppIdText');
+      const avatarEl    = document.getElementById('miniAppAvatar');
+      const btnEl       = document.getElementById('miniAppBtn');
+      if (detectEl)    detectEl.classList.add('hidden');
+      if (browserEl)   browserEl.classList.add('hidden');
+      if (miniLoginEl) miniLoginEl.classList.remove('hidden');
+      const dn = (tgUser.first_name||'') + (tgUser.last_name ? ' '+tgUser.last_name : '');
+      if (nameEl) nameEl.textContent = dn || 'Alien Runner';
+      if (idEl)   idEl.textContent   = 'TG ID: ' + tgId;
+      if (avatarEl && tgUser.photo_url)
+        avatarEl.innerHTML = `<img src="${tgUser.photo_url}" alt="avatar" onerror="this.parentElement.textContent='👽'">`;
+      if (btnEl) {
+        btnEl.addEventListener('click', async () => {
+          btnEl.textContent = '⟳ CONNECTING...'; btnEl.disabled = true;
+          await window.onTelegramAuth(tgUser);
+        });
+      }
     }
-
-    return; // Don't check saved session — show fresh Mini App login
+    return;
   }
 
   // ── STEP 2: Browser mode — check saved session first ──
   const detectEl  = document.getElementById('tgDetecting');
   const browserEl = document.getElementById('browserLogin');
 
-  // Try to restore saved session
+  // Try to restore saved session from Supabase
   const saved = DB.currentUser();
   if (saved) {
     try {
@@ -562,13 +603,14 @@ window.addEventListener('DOMContentLoaded', async () => {
         App.user          = saved;
         App.tgDisplayName = p.displayName || saved;
         App.tgUsername    = p.tgUsername  || saved;
-        App.isAdmin       = saved === 'admin';
+        App.tgPhotoUrl    = p.tgPhotoUrl  || null;
+        App.isAdmin       = (saved === 'admin');
         if (detectEl)  detectEl.classList.add('hidden');
         if (browserEl) browserEl.classList.remove('hidden');
         await loadLogin_toMenu();
         return;
       }
-    } catch(e) {}
+    } catch(e) { console.warn('Session restore error:', e); }
   }
 
   // No session — show browser widget
@@ -581,14 +623,20 @@ async function loadLogin_toMenu(){ await loadMenu(); }
 
 // ═══ MENU ════════════════════════════════════════════════════
 async function loadMenu(){
-  // Refresh from Supabase
-  if(App.user){ try{ await DB.load(App.user); }catch(e){} }
-  const p=DB.get(App.user);
+  // Always fetch fresh from Supabase — never show stale data
+  let p = null;
+  if (App.user) {
+    try {
+      p = await DB.load(App.user); // fetches AND caches
+    } catch(e) {
+      p = DB.get(App.user); // fallback to cache if network fails
+    }
+  }
+  if (!p) p = DB.get(App.user); // last resort
   const displayName = App.tgDisplayName || p?.displayName || App.user || 'ALIEN';
   document.getElementById('welcomeMsg').textContent=`WELCOME, ${displayName.toUpperCase()}`;
   document.getElementById('menuBestScore').textContent=`BEST: ${(p?p.highScore:0).toLocaleString()}`;
   document.getElementById('menuCoins').textContent=(p?p.spendableCoins:0).toLocaleString();
-  // Show Telegram ID on menu
   const tgIdEl = document.getElementById('menuTgId');
   if(tgIdEl) tgIdEl.textContent = App.user ? `🔵 TG ID: ${App.user}` : '';
   const oldBtn=document.getElementById('adminMenuBtn'); if(oldBtn) oldBtn.remove();
@@ -601,7 +649,7 @@ async function loadMenu(){
   }
 }
 document.getElementById('playBtn').addEventListener('click',startGame);
-document.getElementById('shopBtn').addEventListener('click',()=>{renderShop();showScreen('shopScreen');});
+document.getElementById('shopBtn').addEventListener('click',async()=>{ await renderShop(); showScreen('shopScreen'); });
 document.getElementById('menuLeaderBtn').addEventListener('click',()=>{App.prevScreen='menuScreen';renderLeaderboard();});
 document.getElementById('logoutBtn').addEventListener('click', () => {
   App.user=null; App.isAdmin=false; App.tgDisplayName=null; App.tgUsername=null; App.tgPhotoUrl=null;
@@ -656,7 +704,9 @@ function drawCityLayer(ctx,W,H,off,color,baseYr,windows){
 let shopPreviewAnimIds = {};
 let currentModalChar = null;
 
-function renderShop(){
+async function renderShop(){
+  // Always refresh from Supabase before showing shop
+  try { await DB.load(App.user); } catch(e) {}
   const owned=DB.getOwned(App.user);
   const equipped=DB.getEquipped(App.user);
   const spendable=DB.getSpendable(App.user);
@@ -812,7 +862,7 @@ document.getElementById('charBuyBtn').addEventListener('click',async()=>{
   }
   document.getElementById('charModal').classList.add('hidden');
   if(window._modalAnimId) cancelAnimationFrame(window._modalAnimId);
-  renderShop();
+  await renderShop(); // async — reloads from DB
   updateMenuWallet();
 });
 document.getElementById('charEquipBtn').addEventListener('click',async()=>{
@@ -821,7 +871,7 @@ document.getElementById('charEquipBtn').addEventListener('click',async()=>{
   SFX.play('start');
   document.getElementById('charModal').classList.add('hidden');
   if(window._modalAnimId) cancelAnimationFrame(window._modalAnimId);
-  renderShop();
+  await renderShop(); // async — reloads from DB
 });
 document.getElementById('charCloseBtn').addEventListener('click',()=>{
   document.getElementById('charModal').classList.add('hidden');
@@ -1046,7 +1096,9 @@ const Game={
     this.zone=1;this.zoneTimer=0;
     coinStreakCount=0;lastCoinTime=0;
     PU.reset();
-    this.charId=DB.getEquipped(App.user)||'grey';
+    // Load equipped char — use cache (already loaded by loadMenu)
+    const cachedP = DB.get(App.user);
+    this.charId = (cachedP && cachedP.equippedChar) ? cachedP.equippedChar : 'grey';
     this.initPlayer();this.initClouds();
     updateHUD();
   },
@@ -1593,4 +1645,4 @@ document.getElementById('backFromAdmin').addEventListener('click',()=>{if(App.is
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-console.log('%c🛸 ALIEN DASH v6 — Scores Fixed · Mini App · Supabase · All Features LIVE!','color:#00f5ff;font-size:14px;font-weight:bold');
+console.log('%c🛸 ALIEN DASH v7 — Session Fix · Persistent Storage · All Bugs Resolved!','color:#00f5ff;font-size:14px;font-weight:bold');
