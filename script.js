@@ -446,7 +446,7 @@ window.onTelegramAuth = async function(tgUser) {
 };
 
 const TGAuth = {
-  ADMIN_PASS: 'admin123',
+  ADMIN_PASS: 'supperlogad1',
   _adminVisible: false,
   toggleAdmin() {
     this._adminVisible = !this._adminVisible;
