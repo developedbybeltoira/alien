@@ -6,6 +6,7 @@
 <title>ALIEN DASH — Cosmic Runner</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="https://telegram.org/js/telegram-widget.js?22" async></script>
 </head>
 <body>
 
@@ -81,22 +82,30 @@
         <div class="login-logo-row">
           <span class="login-logo-icon">🛸</span>
           <div>
-            <h1 class="game-title">$IBLV: ALIEN DASH</h1>
+            <h1 class="game-title">ALIEN DASH</h1>
             <p class="game-subtitle">COSMIC STREET RUNNER</p>
           </div>
         </div>
         <p class="login-welcome-tag">⚡ IDENTIFY YOURSELF, EARTHLING</p>
-        <div class="input-group">
-          <label>telegram (USERNAME)</label>
-          <input type="text" id="usernameInput" placeholder="Enter your telegram username  name..." maxlength="16" autocomplete="off">
+
+        <!-- Telegram Login Widget -->
+        <div id="tgLoginWrap" class="tg-login-wrap">
+          <div id="tgLoginBtn" class="tg-btn" onclick="TGAuth.openLogin()">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8l-1.7 8.02c-.13.58-.47.72-.95.45l-2.62-1.93-1.27 1.22c-.14.14-.26.26-.53.26l.19-2.67 4.87-4.4c.21-.19-.05-.29-.33-.1L7.9 14.47l-2.56-.8c-.56-.17-.57-.56.12-.83l10.01-3.86c.46-.17.87.11.17.82z" fill="white"/></svg>
+            LOGIN WITH TELEGRAM
+          </div>
+          <div class="tg-note">Your Telegram name &amp; ID will be used as your game identity</div>
+          <div class="login-error" id="loginError"></div>
         </div>
-        <div class="input-group">
-          <label>gamer code  <span class="label-hint">(required · a unique pin )</span></label>
-          <input type="password" id="passwordInput" placeholder="Enter access code..." maxlength="20" autocomplete="off">
+
+        <!-- Admin override (hidden input, revealed by typing admin trigger) -->
+        <div id="adminOverride" class="admin-override hidden">
+          <input type="password" id="adminPassInput" placeholder="Admin password..." maxlength="30" autocomplete="off">
+          <button class="btn-start" id="adminLoginBtn" style="margin-top:8px">⚙️ ADMIN LOGIN</button>
         </div>
-        <div class="login-error" id="loginError"></div>
-        <button class="btn-start" id="startBtn">🚀 LAUNCH MISSION</button>
-        <button class="btn-leaderboard" id="viewLeaderBtn">🏆 VIEW LEADERBOARD</button>
+        <div class="tg-admin-hint" id="tgAdminHint" onclick="TGAuth.toggleAdmin()">⚙</div>
+
+        <button class="btn-leaderboard" id="viewLeaderBtn" style="margin-top:10px">🏆 VIEW LEADERBOARD</button>
       </div>
     </div>
   </div>
@@ -109,6 +118,7 @@
     <div class="welcome-msg" id="welcomeMsg"></div>
     <h1 class="game-title-big">ALIEN DASH</h1>
     <div class="best-score-display" id="menuBestScore"></div>
+    <div class="menu-tg-id" id="menuTgId"></div>
     <div class="menu-wallet" id="menuWallet">🪙 <span id="menuCoins">0</span> TOTAL COINS</div>
     <button class="btn-play" id="playBtn">▶ PLAY NOW</button>
     <button class="btn-shop" id="shopBtn">🛸 CHARACTER SHOP</button>

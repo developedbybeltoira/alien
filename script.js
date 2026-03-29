@@ -157,54 +157,181 @@ const CHAR_COLORS = {
 };
 
 // ═══ DATABASE ════════════════════════════════════════════════
-const DB = {
-  KP:'ad_players', KC:'ad_user',
-  all(){try{return JSON.parse(localStorage.getItem(this.KP)||'{}');}catch{return{};}},
-  save(d){localStorage.setItem(this.KP,JSON.stringify(d));},
-  get(n){return this.all()[n.toLowerCase()]||null;},
-  upsert(n,data){
-    const a=this.all(),k=n.toLowerCase();
-    if(!a[k]) a[k]={displayName:n,highScore:0,totalCoins:0,spendableCoins:0,gamesPlayed:0,totalDistance:0,joinDate:Date.now(),ownedChars:['grey'],equippedChar:'grey'};
-    Object.assign(a[k],data); a[k].lastPlayed=Date.now(); this.save(a); return a[k];
+// ═══ SUPABASE DATABASE ═══════════════════════════════════════
+const SUPA_URL = 'https://djdgezalatzhnteibsim.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZGdlemFsYXR6aG50ZWlic2ltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3ODEwOTcsImV4cCI6MjA5MDM1NzA5N30.hleGlrE1_s2n-rFuQH7V04Q-2CWuc2x-XMK7vpfgG_E';
+
+const SUPA = {
+  async query(method, path, body) {
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
+        method,
+        headers: {
+          'apikey': SUPA_KEY,
+          'Authorization': `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+        },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (!res.ok) { const e = await res.text(); console.error('Supa error:', e); return null; }
+      const text = await res.text();
+      return text ? JSON.parse(text) : [];
+    } catch(e) { console.error('Supa fetch error:', e); return null; }
   },
-  updateScore(n,score,coins,dist){
-    const p=this.get(n)||{displayName:n,highScore:0,totalCoins:0,spendableCoins:0,gamesPlayed:0,totalDistance:0,joinDate:Date.now(),ownedChars:['grey'],equippedChar:'grey'};
-    return this.upsert(n,{
-      highScore:Math.max(p.highScore||0,score),
-      totalCoins:(p.totalCoins||0)+coins,
-      spendableCoins:(p.spendableCoins||0)+coins,
-      gamesPlayed:(p.gamesPlayed||0)+1,
-      totalDistance:(p.totalDistance||0)+dist
-    });
+  async getPlayer(username) {
+    const rows = await this.query('GET', `players?username=eq.${encodeURIComponent(username.toLowerCase())}&limit=1`);
+    return (rows && rows[0]) ? this._toLocal(rows[0]) : null;
   },
-  buyChar(n,charId,price){
-    const p=this.get(n); if(!p) return false;
-    if((p.spendableCoins||0)<price) return false;
-    const owned=p.ownedChars||['grey'];
-    if(owned.includes(charId)) return true;
-    owned.push(charId);
-    this.upsert(n,{ownedChars:owned,spendableCoins:(p.spendableCoins||0)-price});
-    return true;
+  async upsertPlayer(username, data) {
+    const existing = await this.getPlayer(username);
+    const row = this._toRow(username, data, existing);
+    const rows = await this.query('POST', 'players', row);
+    if (rows && rows[0]) { this._cacheSet(username, this._toLocal(rows[0])); return this._toLocal(rows[0]); }
+    return existing;
   },
-  equipChar(n,charId){
-    const p=this.get(n); if(!p) return;
-    const owned=p.ownedChars||['grey'];
-    if(!owned.includes(charId)) return;
-    this.upsert(n,{equippedChar:charId});
+  async leaderboard(limit=20) {
+    const rows = await this.query('GET', `players?order=high_score.desc&limit=${limit}`);
+    if (!rows) return [];
+    return rows.map(r => this._toLocal(r));
   },
-  getEquipped(n){ const p=this.get(n); return p?p.equippedChar||'grey':'grey'; },
-  getOwned(n){ const p=this.get(n); return p?p.ownedChars||['grey']:['grey']; },
-  getSpendable(n){ const p=this.get(n); return p?p.spendableCoins||0:0; },
-  leaderboard(lim=20){return Object.values(this.all()).sort((a,b)=>(b.highScore||0)-(a.highScore||0)).slice(0,lim);},
-  resetScores(){const a=this.all();Object.keys(a).forEach(k=>{a[k].highScore=0;a[k].totalCoins=0;a[k].spendableCoins=0;a[k].gamesPlayed=0;a[k].totalDistance=0;});this.save(a);},
-  resetAll(){localStorage.removeItem(this.KP);},
-  deletePlayer(n){const a=this.all();delete a[n.toLowerCase()];this.save(a);},
-  currentUser(){return localStorage.getItem(this.KC)||null;},
-  setUser(n){localStorage.setItem(this.KC,n);},
-  clearUser(){localStorage.removeItem(this.KC);}
+  async resetScores() {
+    await this.query('PATCH', 'players', { high_score:0, total_coins:0, spendable_coins:0, games_played:0, total_distance:0 });
+    this._clearCache();
+  },
+  async deletePlayer(username) {
+    await this.query('DELETE', `players?username=eq.${encodeURIComponent(username.toLowerCase())}`);
+    this._cacheDelete(username);
+  },
+  async getAllPlayers() {
+    const rows = await this.query('GET', 'players?order=high_score.desc');
+    if (!rows) return [];
+    return rows.map(r => this._toLocal(r));
+  },
+  _toRow(username, data, existing) {
+    const base = existing || {};
+    return {
+      username: String(username).toLowerCase(),
+      display_name: data.displayName || base.displayName || username,
+      tg_id: data.tgId || base.tgId || String(username),
+      tg_username: data.tgUsername || base.tgUsername || '',
+      tg_photo: data.tgPhotoUrl || base.tgPhotoUrl || '',
+      high_score: data.highScore !== undefined ? data.highScore : (base.highScore || 0),
+      total_coins: data.totalCoins !== undefined ? data.totalCoins : (base.totalCoins || 0),
+      spendable_coins: data.spendableCoins !== undefined ? data.spendableCoins : (base.spendableCoins || 0),
+      games_played: data.gamesPlayed !== undefined ? data.gamesPlayed : (base.gamesPlayed || 0),
+      total_distance: data.totalDistance !== undefined ? data.totalDistance : (base.totalDistance || 0),
+      owned_chars: data.ownedChars || base.ownedChars || ['grey'],
+      equipped_char: data.equippedChar || base.equippedChar || 'grey',
+      join_date: base.joinDate || Date.now(),
+      last_played: Date.now()
+    };
+  },
+  _toLocal(row) {
+    return {
+      displayName: row.display_name,
+      tgId: row.tg_id || '',
+      tgUsername: row.tg_username || '',
+      tgPhotoUrl: row.tg_photo || '',
+      highScore: row.high_score || 0,
+      totalCoins: row.total_coins || 0,
+      spendableCoins: row.spendable_coins || 0,
+      gamesPlayed: row.games_played || 0,
+      totalDistance: row.total_distance || 0,
+      ownedChars: row.owned_chars || ['grey'],
+      equippedChar: row.equipped_char || 'grey',
+      joinDate: row.join_date || Date.now(),
+      lastPlayed: row.last_played || Date.now()
+    };
+  },
+  // Local cache so UI is instant, syncs to Supabase in background
+  _cache: {},
+  _cacheSet(n, d) { this._cache[n.toLowerCase()] = d; },
+  _cacheGet(n) { return this._cache[n.toLowerCase()] || null; },
+  _cacheDelete(n) { delete this._cache[n.toLowerCase()]; },
+  _clearCache() { this._cache = {}; }
 };
 
-// ═══ APP STATE ════════════════════════════════════════════════
+// DB — unified interface (cache-first, Supabase-backed)
+const DB = {
+  KC: 'ad_user',
+  _pending: {}, // tracks in-flight async ops
+
+  get(n) { return SUPA._cacheGet(n); },
+
+  async load(n) {
+    const p = await SUPA.getPlayer(n);
+    if (p) SUPA._cacheSet(n, p);
+    return p;
+  },
+
+  async upsert(n, data) {
+    const existing = SUPA._cacheGet(n) || {};
+    const merged = Object.assign({}, existing, data, { displayName: data.displayName || existing.displayName || n });
+    SUPA._cacheSet(n, merged);
+    const result = await SUPA.upsertPlayer(n, merged);
+    if (result) SUPA._cacheSet(n, result);
+    return result || merged;
+  },
+
+  async updateScore(n, score, coins, dist) {
+    const p = SUPA._cacheGet(n) || { highScore:0, totalCoins:0, spendableCoins:0, gamesPlayed:0, totalDistance:0, ownedChars:['grey'], equippedChar:'grey' };
+    const updated = {
+      displayName: p.displayName || n,
+      highScore: Math.max(p.highScore || 0, score),
+      totalCoins: (p.totalCoins || 0) + coins,
+      spendableCoins: (p.spendableCoins || 0) + coins,
+      gamesPlayed: (p.gamesPlayed || 0) + 1,
+      totalDistance: (p.totalDistance || 0) + dist,
+      ownedChars: p.ownedChars || ['grey'],
+      equippedChar: p.equippedChar || 'grey'
+    };
+    SUPA._cacheSet(n, updated);
+    SUPA.upsertPlayer(n, updated); // fire and forget
+    return updated;
+  },
+
+  async buyChar(n, charId, price) {
+    const p = SUPA._cacheGet(n); if (!p) return false;
+    if ((p.spendableCoins || 0) < price) return false;
+    const owned = [...(p.ownedChars || ['grey'])];
+    if (owned.includes(charId)) return true;
+    owned.push(charId);
+    const updated = Object.assign({}, p, { ownedChars: owned, spendableCoins: (p.spendableCoins||0) - price });
+    SUPA._cacheSet(n, updated);
+    await SUPA.upsertPlayer(n, updated);
+    return true;
+  },
+
+  async equipChar(n, charId) {
+    const p = SUPA._cacheGet(n); if (!p) return;
+    const owned = p.ownedChars || ['grey'];
+    if (!owned.includes(charId)) return;
+    const updated = Object.assign({}, p, { equippedChar: charId });
+    SUPA._cacheSet(n, updated);
+    SUPA.upsertPlayer(n, updated);
+  },
+
+  getEquipped(n) { const p = this.get(n); return p ? p.equippedChar || 'grey' : 'grey'; },
+  getOwned(n) { const p = this.get(n); return p ? p.ownedChars || ['grey'] : ['grey']; },
+  getSpendable(n) { const p = this.get(n); return p ? p.spendableCoins || 0 : 0; },
+
+  async leaderboard(lim=20) { return await SUPA.leaderboard(lim); },
+  async resetScores() { await SUPA.resetScores(); },
+  async resetAll() {
+    const all = await SUPA.getAllPlayers();
+    // delete all players
+    for (const p of all) await SUPA.deletePlayer(p.displayName);
+    SUPA._clearCache();
+  },
+  async deletePlayer(n) { await SUPA.deletePlayer(n); },
+  async getAllPlayers() { return await SUPA.getAllPlayers(); },
+
+  currentUser() { return localStorage.getItem(this.KC) || null; },
+  setUser(n) { localStorage.setItem(this.KC, n); },
+  clearUser() { localStorage.removeItem(this.KC); }
+};
+
 const App = { user:null, isAdmin:false, prevScreen:null };
 
 function showScreen(id){
@@ -212,25 +339,123 @@ function showScreen(id){
   const el=document.getElementById(id); el.style.display='flex'; el.classList.add('active');
 }
 
-// ═══ LOGIN ════════════════════════════════════════════════════
-function shake(el){el.style.animation='none';el.offsetHeight;el.style.animation='shake 0.4s ease';el.addEventListener('animationend',()=>el.style.animation='',{once:true});}
+// ═══ TELEGRAM AUTH ════════════════════════════════════════════
+const TGAuth = {
+  ADMIN_PASS: 'admin123', // change this to your admin password
+  _adminVisible: false,
 
-document.getElementById('startBtn').addEventListener('click',()=>{
-  const name=document.getElementById('usernameInput').value.trim();
-  const pass=document.getElementById('passwordInput').value.trim();
-  const err=document.getElementById('loginError');
-  err.textContent='';
-  if(!name){shake(document.getElementById('usernameInput'));err.textContent='⚠ NAME REQUIRED';return;}
-  if(!pass){shake(document.getElementById('passwordInput'));err.textContent='⚠ ACCESS CODE REQUIRED';return;}
-  App.user=name; App.isAdmin=(pass==='truealienbelieveo.');
-  DB.setUser(name); DB.upsert(name,{displayName:name});
-  SFX.wake(); SFX.play('start');
-  if(App.isAdmin){renderAdmin();showScreen('adminScreen');}
-  else loadMenu();
-});
-document.getElementById('usernameInput').addEventListener('keydown',e=>{if(e.key==='Enter') document.getElementById('passwordInput').focus();});
-document.getElementById('passwordInput').addEventListener('keydown',e=>{if(e.key==='Enter') document.getElementById('startBtn').click();});
-document.getElementById('viewLeaderBtn').addEventListener('click',()=>{App.prevScreen='loginScreen';renderLeaderboard();showScreen('leaderboardScreen');});
+  // Called when Telegram widget returns user data
+  async onAuth(tgUser) {
+    showConnecting(true);
+    try {
+      // tgUser: { id, first_name, last_name, username, photo_url, auth_date, hash }
+      const tgId = String(tgUser.id);
+      const displayName = tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '');
+      const username = tgUser.username || displayName;
+
+      App.user = tgId;
+      App.tgDisplayName = displayName;
+      App.tgUsername = username;
+      App.tgPhotoUrl = tgUser.photo_url || null;
+      App.isAdmin = false;
+
+      DB.setUser(tgId);
+      SFX.wake();
+
+      // Upsert into Supabase with TG info
+      await DB.upsert(tgId, {
+        displayName: displayName,
+        tgId: tgId,
+        tgUsername: username,
+        tgPhotoUrl: tgUser.photo_url || null
+      });
+
+      SFX.play('start');
+      showConnecting(false);
+      await loadLogin_toMenu();
+    } catch(e) {
+      showConnecting(false);
+      document.getElementById('loginError').textContent = '⚠ CONNECTION ERROR — CHECK INTERNET';
+    }
+  },
+
+  openLogin() {
+    // Telegram Login Widget — opens Telegram OAuth popup
+    // Bot username: change 'AlienDashBot' to YOUR bot username
+    // Create a bot at @BotFather, enable login widget, set domain
+    const botUsername = 'AlienDashBot'; // ← CHANGE THIS to your bot username
+
+    // Try Telegram widget popup approach
+    if (window.Telegram && window.Telegram.Login) {
+      window.Telegram.Login.auth(
+        { bot_id: botUsername, request_access: 'write' },
+        (data) => { if (data) TGAuth.onAuth(data); }
+      );
+    } else {
+      // Fallback: open Telegram OAuth in popup window
+      const authUrl = `https://oauth.telegram.org/auth?bot_id=${botUsername}&origin=${encodeURIComponent(location.origin)}&return_to=${encodeURIComponent(location.href)}&request_access=write`;
+      const popup = window.open(authUrl, 'tgauth', 'width=550,height=600,scrollbars=yes');
+      // Listen for postMessage from popup
+      const handler = (event) => {
+        if (event.data && event.data.id) {
+          window.removeEventListener('message', handler);
+          if (popup) popup.close();
+          TGAuth.onAuth(event.data);
+        }
+      };
+      window.addEventListener('message', handler);
+    }
+  },
+
+  toggleAdmin() {
+    this._adminVisible = !this._adminVisible;
+    const el = document.getElementById('adminOverride');
+    el.classList.toggle('hidden', !this._adminVisible);
+    if (this._adminVisible) document.getElementById('adminPassInput').focus();
+  },
+
+  async adminLogin() {
+    const pass = document.getElementById('adminPassInput').value.trim();
+    const err = document.getElementById('loginError');
+    if (!pass) { err.textContent = '⚠ ENTER ADMIN PASSWORD'; return; }
+    if (pass !== this.ADMIN_PASS) { err.textContent = '⚠ WRONG ADMIN PASSWORD'; return; }
+
+    showConnecting(true);
+    App.user = 'admin_' + pass.substring(0,4);
+    App.tgDisplayName = 'ADMIN';
+    App.tgUsername = 'admin';
+    App.isAdmin = true;
+    DB.setUser(App.user);
+    try {
+      await DB.upsert(App.user, { displayName: 'ADMIN', tgId: App.user });
+      showConnecting(false);
+      await renderAdmin(); showScreen('adminScreen');
+    } catch(e) {
+      showConnecting(false);
+      err.textContent = '⚠ DB ERROR';
+    }
+  }
+};
+
+// Global callback for Telegram widget (called by TG script)
+window.onTelegramAuth = function(user) { TGAuth.onAuth(user); };
+
+// Show/hide connecting spinner
+function showConnecting(show) {
+  let el = document.getElementById('connectingOverlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'connectingOverlay';
+    el.className = 'connecting-overlay' + (show ? '' : ' hidden');
+    el.innerHTML = '<div class="connecting-spinner"></div><div class="connecting-text">CONNECTING...</div>';
+    document.body.appendChild(el);
+  }
+  el.classList.toggle('hidden', !show);
+}
+
+document.getElementById('adminLoginBtn').addEventListener('click', () => TGAuth.adminLogin());
+document.getElementById('adminPassInput').addEventListener('keydown', e => { if(e.key==='Enter') TGAuth.adminLogin(); });
+document.getElementById('viewLeaderBtn').addEventListener('click',()=>{App.prevScreen='loginScreen';renderLeaderboard();});
 
 // Login BG stars
 (function(){
@@ -241,33 +466,52 @@ document.getElementById('viewLeaderBtn').addEventListener('click',()=>{App.prevS
   draw();
 })();
 
-window.addEventListener('DOMContentLoaded',()=>{
-  const saved=DB.currentUser();
-  if(saved&&DB.get(saved)){App.user=saved;App.isAdmin=false;loadMenu();}
-  else showScreen('loginScreen');
+window.addEventListener('DOMContentLoaded',async ()=>{
   document.addEventListener('touchstart',()=>SFX.wake(),{once:true});
   document.addEventListener('mousedown',()=>SFX.wake(),{once:true});
+  const saved=DB.currentUser();
+  if(saved){
+    try {
+      const p = await DB.load(saved);
+      if(p){
+        App.user = saved;
+        App.tgDisplayName = p.displayName || saved;
+        App.tgUsername = p.tgUsername || saved;
+        App.isAdmin = saved.startsWith('admin_');
+        await loadLogin_toMenu(); return;
+      }
+    } catch(e) {}
+  }
+  showScreen('loginScreen');
 });
 
+async function loadLogin_toMenu(){ await loadMenu(); }
+
 // ═══ MENU ════════════════════════════════════════════════════
-function loadMenu(){
+async function loadMenu(){
+  // Refresh from Supabase
+  if(App.user){ try{ await DB.load(App.user); }catch(e){} }
   const p=DB.get(App.user);
-  document.getElementById('welcomeMsg').textContent=`WELCOME, ${(App.user||'ALIEN').toUpperCase()}`;
+  const displayName = App.tgDisplayName || p?.displayName || App.user || 'ALIEN';
+  document.getElementById('welcomeMsg').textContent=`WELCOME, ${displayName.toUpperCase()}`;
   document.getElementById('menuBestScore').textContent=`BEST: ${(p?p.highScore:0).toLocaleString()}`;
   document.getElementById('menuCoins').textContent=(p?p.spendableCoins:0).toLocaleString();
-  const old=document.getElementById('adminMenuBtn'); if(old) old.remove();
+  // Show Telegram ID on menu
+  const tgIdEl = document.getElementById('menuTgId');
+  if(tgIdEl) tgIdEl.textContent = App.user ? `🔵 TG ID: ${App.user}` : '';
+  const oldBtn=document.getElementById('adminMenuBtn'); if(oldBtn) oldBtn.remove();
   showScreen('menuScreen'); startMenuBg();
   if(App.isAdmin){
     const btn=document.createElement('button'); btn.id='adminMenuBtn'; btn.className='btn-secondary';
     btn.textContent='⚙️ ADMIN PANEL'; btn.style.cssText='border-color:rgba(255,0,100,0.45);color:#ff3399;margin-bottom:0';
-    btn.addEventListener('click',()=>{renderAdmin();showScreen('adminScreen');});
+    btn.addEventListener('click',async()=>{await renderAdmin();showScreen('adminScreen');});
     document.querySelector('.menu-overlay').appendChild(btn);
   }
 }
 document.getElementById('playBtn').addEventListener('click',startGame);
 document.getElementById('shopBtn').addEventListener('click',()=>{renderShop();showScreen('shopScreen');});
-document.getElementById('menuLeaderBtn').addEventListener('click',()=>{App.prevScreen='menuScreen';renderLeaderboard();showScreen('leaderboardScreen');});
-document.getElementById('logoutBtn').addEventListener('click',()=>{App.user=null;App.isAdmin=false;DB.clearUser();document.getElementById('usernameInput').value='';document.getElementById('passwordInput').value='';showScreen('loginScreen');});
+document.getElementById('menuLeaderBtn').addEventListener('click',()=>{App.prevScreen='menuScreen';renderLeaderboard();});
+document.getElementById('logoutBtn').addEventListener('click',()=>{App.user=null;App.isAdmin=false;App.tgDisplayName=null;App.tgUsername=null;App.tgPhotoUrl=null;SUPA._clearCache();DB.clearUser();document.getElementById('loginError').textContent='';document.getElementById('adminPassInput').value='';document.getElementById('adminOverride').classList.add('hidden');showScreen('loginScreen');});
 
 let menuAnimId=null;
 function startMenuBg(){
@@ -450,15 +694,15 @@ function openCharModal(charId){
   document.getElementById('charModal').classList.remove('hidden');
 }
 
-document.getElementById('charBuyBtn').addEventListener('click',()=>{
+document.getElementById('charBuyBtn').addEventListener('click',async()=>{
   const char=CHARACTERS.find(c=>c.id===currentModalChar);
   if(!char) return;
   if(char.price===0){
-    DB.equipChar(App.user,char.id);
+    await DB.equipChar(App.user,char.id);
     SFX.play('buy');
   } else {
-    const ok=DB.buyChar(App.user,char.id,char.price);
-    if(ok){ DB.equipChar(App.user,char.id); SFX.play('buy'); }
+    const ok=await DB.buyChar(App.user,char.id,char.price);
+    if(ok){ await DB.equipChar(App.user,char.id); SFX.play('buy'); }
     else return;
   }
   document.getElementById('charModal').classList.add('hidden');
@@ -466,9 +710,9 @@ document.getElementById('charBuyBtn').addEventListener('click',()=>{
   renderShop();
   updateMenuWallet();
 });
-document.getElementById('charEquipBtn').addEventListener('click',()=>{
+document.getElementById('charEquipBtn').addEventListener('click',async()=>{
   if(!currentModalChar) return;
-  DB.equipChar(App.user,currentModalChar);
+  await DB.equipChar(App.user,currentModalChar);
   SFX.play('start');
   document.getElementById('charModal').classList.add('hidden');
   if(window._modalAnimId) cancelAnimationFrame(window._modalAnimId);
@@ -478,15 +722,18 @@ document.getElementById('charCloseBtn').addEventListener('click',()=>{
   document.getElementById('charModal').classList.add('hidden');
   if(window._modalAnimId) cancelAnimationFrame(window._modalAnimId);
 });
-document.getElementById('shopBackBtn').addEventListener('click',()=>{
+document.getElementById('shopBackBtn').addEventListener('click',async()=>{
   Object.values(shopPreviewAnimIds).forEach(id=>cancelAnimationFrame(id));
   shopPreviewAnimIds={};
-  loadMenu();
+  await loadMenu();
 });
 
 function updateMenuWallet(){
   const p=DB.get(App.user);
-  if(p) document.getElementById('menuCoins').textContent=(p.spendableCoins||0).toLocaleString();
+  if(p){
+    document.getElementById('menuCoins').textContent=(p.spendableCoins||0).toLocaleString();
+    document.getElementById('menuBestScore').textContent=`BEST: ${(p.highScore||0).toLocaleString()}`;
+  }
 }
 
 // ═══ DRAW CHARACTER ON CANVAS ════════════════════════════════
@@ -681,9 +928,9 @@ const Game={
   reset(){
     this.score=0;this.coins=0;this.distance=0;this.lives=3;
     this.combo=0;this.comboTimer=0;this.maxCombo=0;
-    this.speed=4;this.baseSpeed=4; // HARDER: starts slower, ramps faster
+    this.speed=2.5;this.baseSpeed=2.5; // Starts SLOW, ramps up gradually
     this.obstacles=[];this.collectibles=[];this.particles=[];this.clouds=[];
-    this.frame=0;this.lastObs=0;this.lastCoin=0;this.lastPU=0;this.spawnGap=100;
+    this.frame=0;this.lastObs=0;this.lastCoin=0;this.lastPU=0;this.spawnGap=160; // wide gap at slow start
     this.bgOff=0;this.bgOff2=0;this.bgOff3=0;
     this.moonX=this.W*0.75;this.invincible=0;
     this.zone=1;this.zoneTimer=0;
@@ -725,7 +972,19 @@ const Game={
     // HARDER: speed ramps faster, no cap reduction
     const charColors=CHAR_COLORS[this.charId]||CHAR_COLORS.grey;
     const speedMult=charColors.plasma?1.15:PU.has('speed')?1.6:1;
-    this.speed=Math.min(this.baseSpeed+this.frame*0.004,20)*speedMult; // faster ramp (was 0.003)
+    // SPEED CURVE: slow (0-10s) → medium (10-30s) → fast (30s+) → max cap
+    // Phase 1: 0-600 frames (~10s): gentle 2.5→5
+    // Phase 2: 600-1800 frames (~30s): medium 5→10
+    // Phase 3: 1800+ frames: fast 10→18
+    let targetSpeed;
+    if(this.frame < 600) {
+      targetSpeed = 2.5 + (this.frame / 600) * 2.5; // 2.5 → 5
+    } else if(this.frame < 1800) {
+      targetSpeed = 5 + ((this.frame - 600) / 1200) * 5; // 5 → 10
+    } else {
+      targetSpeed = 10 + Math.min((this.frame - 1800) * 0.003, 8); // 10 → 18 cap
+    }
+    this.speed = Math.min(targetSpeed, 18) * speedMult;
 
     // Score: HARDER — score per frame reduced, need skill for high scores
     const starMult=PU.has('star')||this.charId==='eternal'?3:1;
@@ -771,7 +1030,10 @@ const Game={
     if(this.frame-this.lastObs>this.spawnGap){
       this.spawnObstacle();this.lastObs=this.frame;
       // HARDER: gap shrinks much faster
-      this.spawnGap=Math.max(35,80+Math.random()*60-this.frame*0.15);
+      // Spawn gap shrinks as game speeds up — fewer obstacles early
+      if(this.frame < 600) this.spawnGap = Math.max(120, 160 - this.frame * 0.05);
+      else if(this.frame < 1800) this.spawnGap = Math.max(60, 120 - (this.frame-600) * 0.04);
+      else this.spawnGap = Math.max(35, 70 + Math.random() * 40 - (this.frame-1800) * 0.01);
     }
     if(this.frame-this.lastCoin>40){if(Math.random()<0.55)this.spawnCoin();this.lastCoin=this.frame;} // HARDER: fewer coins (was 0.65)
     if(this.frame-this.lastPU>420){if(Math.random()<0.4)this.spawnPowerup();this.lastPU=this.frame;} // HARDER: rarer powerups
@@ -1165,38 +1427,44 @@ document.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='ArrowUp'
 // ═══ PAUSE ════════════════════════════════════════════════════
 document.getElementById('pauseBtn').addEventListener('click',togglePause);
 document.getElementById('resumeBtn').addEventListener('click',togglePause);
-document.getElementById('quitBtn').addEventListener('click',()=>{Game.running=false;cancelAnimationFrame(Game.animId);SFX.stopMusic();document.getElementById('pauseMenu').classList.add('hidden');loadMenu();});
+document.getElementById('quitBtn').addEventListener('click',async()=>{Game.running=false;cancelAnimationFrame(Game.animId);SFX.stopMusic();document.getElementById('pauseMenu').classList.add('hidden');await loadMenu();});
 function togglePause(){if(!Game.running&&!Game.paused)return;Game.paused=!Game.paused;document.getElementById('pauseMenu').classList.toggle('hidden',!Game.paused);if(!Game.paused)Game.loop();}
 document.getElementById('muteBtn').addEventListener('click',()=>{const m=SFX.toggle();document.getElementById('muteBtn').textContent=m?'🔇':'🔊';});
 
 // ═══ GAME OVER ════════════════════════════════════════════════
 document.getElementById('retryBtn').addEventListener('click',startGame);
-document.getElementById('goMenuBtn').addEventListener('click',loadMenu);
-document.getElementById('goLeaderBtn').addEventListener('click',()=>{App.prevScreen='gameOverScreen';renderLeaderboard();showScreen('leaderboardScreen');});
+document.getElementById('goMenuBtn').addEventListener('click',async()=>{ await loadMenu(); });
+document.getElementById('goLeaderBtn').addEventListener('click',()=>{App.prevScreen='gameOverScreen';renderLeaderboard();});
 
 // ═══ LEADERBOARD ══════════════════════════════════════════════
-function renderLeaderboard(){
-  const list=DB.leaderboard(),el=document.getElementById('leaderboardList');
-  if(!list.length){el.innerHTML='<div class="lb-empty">NO SCORES YET — BE THE FIRST!</div>';return;}
+async function renderLeaderboard(){
+  const el=document.getElementById('leaderboardList');
+  el.innerHTML='<div class="lb-empty" style="color:rgba(0,245,255,0.5)">⟳ LOADING...</div>';
+  showScreen('leaderboardScreen');
+  const list=await DB.leaderboard();
+  if(!list||!list.length){el.innerHTML='<div class="lb-empty">NO SCORES YET — BE THE FIRST!</div>';return;}
   const medals=['🥇','🥈','🥉'];
-  el.innerHTML=list.map((p,i)=>{const me=p.displayName.toLowerCase()===(App.user||'').toLowerCase(),cls=i===0?'top1':i===1?'top2':i===2?'top3':'';return`<div class="lb-entry ${cls} ${me?'me':''}"><span class="lb-rank">${medals[i]||(i+1)}</span><span class="lb-name">${escHtml(p.displayName)}${me?' (YOU)':''}</span><span class="lb-score">${(p.highScore||0).toLocaleString()}</span><span class="lb-coins">🪙${p.totalCoins||0}</span></div>`;}).join('');
+  el.innerHTML=list.map((p,i)=>{const me=String(p.tgId||p.displayName||'').toLowerCase()===String(App.user||'').toLowerCase(),cls=i===0?'top1':i===1?'top2':i===2?'top3':'';const label=p.displayName||(p.tgUsername?'@'+p.tgUsername:p.tgId||'?');return`<div class="lb-entry ${cls} ${me?'me':''}"><span class="lb-rank">${medals[i]||(i+1)}</span><span class="lb-name">${escHtml(label)}${me?' (YOU)':''}</span><span class="lb-score">${(p.highScore||0).toLocaleString()}</span><span class="lb-coins">🪙${p.totalCoins||0}</span></div>`;}).join('');
 }
 document.getElementById('backFromLB').addEventListener('click',()=>{const prev=App.prevScreen||'menuScreen';if(prev==='loginScreen'){showScreen('loginScreen');return;}if(prev==='gameOverScreen'){showScreen('gameOverScreen');return;}showScreen('menuScreen');});
 
 // ═══ ADMIN ════════════════════════════════════════════════════
-function renderAdmin(){
-  const all=DB.all(),players=Object.values(all);
-  const tGames=players.reduce((s,p)=>s+(p.gamesPlayed||0),0),tCoins=players.reduce((s,p)=>s+(p.totalCoins||0),0),top=players.reduce((m,p)=>Math.max(m,p.highScore||0),0);
+async function renderAdmin(){
+  document.getElementById('adminStats').innerHTML='<div style="color:rgba(0,245,255,0.5);text-align:center;padding:20px;font-family:Orbitron,sans-serif;font-size:12px">⟳ LOADING...</div>';
+  const players = await DB.getAllPlayers();
+  const tGames=players.reduce((s,p)=>s+(p.gamesPlayed||0),0);
+  const tCoins=players.reduce((s,p)=>s+(p.totalCoins||0),0);
+  const top=players.reduce((m,p)=>Math.max(m,p.highScore||0),0);
   document.getElementById('adminStats').innerHTML=`<div class="admin-stat"><span class="admin-stat-val">${players.length}</span><div class="admin-stat-label">PLAYERS</div></div><div class="admin-stat"><span class="admin-stat-val">${tGames}</span><div class="admin-stat-label">TOTAL GAMES</div></div><div class="admin-stat"><span class="admin-stat-val">${tCoins.toLocaleString()}</span><div class="admin-stat-label">COINS EARNED</div></div><div class="admin-stat"><span class="admin-stat-val">${top.toLocaleString()}</span><div class="admin-stat-label">TOP SCORE</div></div>`;
   const pl=document.getElementById('adminPlayerList');
-  pl.innerHTML=!players.length?'<div style="color:rgba(255,255,255,0.28);text-align:center;padding:20px;font-size:12px">No players yet</div>':players.sort((a,b)=>(b.highScore||0)-(a.highScore||0)).map(p=>`<div class="admin-player"><div><div class="admin-player-name">${escHtml(p.displayName)}</div><div class="admin-player-info">Score:${(p.highScore||0).toLocaleString()} · Games:${p.gamesPlayed||0} · Coins:${p.totalCoins||0} · Char:${p.equippedChar||'grey'}</div></div><button class="admin-del" onclick="delPlayer('${escHtml(p.displayName.toLowerCase())}')">✕</button></div>`).join('');
+  pl.innerHTML=!players.length?'<div style="color:rgba(255,255,255,0.28);text-align:center;padding:20px;font-size:12px">No players yet</div>':players.map(p=>`<div class="admin-player"><div><div class="admin-player-name">${escHtml(p.displayName||'?')} ${p.tgUsername?'<span style="color:rgba(0,136,204,0.7);font-size:10px">@'+escHtml(p.tgUsername)+'</span>':''}</div><div class="admin-player-info">TG:${escHtml(p.tgId||'?')} · Score:${(p.highScore||0).toLocaleString()} · Games:${p.gamesPlayed||0} · Coins:${p.totalCoins||0} · Char:${p.equippedChar||'grey'}</div></div><button class="admin-del" onclick="delPlayer('${escHtml((p.tgId||p.displayName||'').toLowerCase())}')">✕</button></div>`).join('');
 }
-window.delPlayer=function(k){if(confirm(`Delete "${k}"?`)){DB.deletePlayer(k);renderAdmin();}};
-document.getElementById('resetLeaderBtn').addEventListener('click',()=>{if(confirm('Reset ALL scores?')){DB.resetScores();renderAdmin();alert('Done!');}});
-document.getElementById('resetAllBtn').addEventListener('click',()=>{if(confirm('DELETE ALL data?')){DB.resetAll();renderAdmin();alert('All cleared!');}});
-document.getElementById('exportBtn').addEventListener('click',()=>{const b=new Blob([JSON.stringify(DB.all(),null,2)],{type:'application/json'});const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='alienDash_data.json';a.click();URL.revokeObjectURL(u);});
+window.delPlayer=async function(k){if(confirm(`Delete "${k}"?`)){await DB.deletePlayer(k);await renderAdmin();}};
+document.getElementById('resetLeaderBtn').addEventListener('click',async()=>{if(confirm('Reset ALL scores?')){await DB.resetScores();await renderAdmin();alert('Done!');}});
+document.getElementById('resetAllBtn').addEventListener('click',async()=>{if(confirm('DELETE ALL data?')){await DB.resetAll();await renderAdmin();alert('All cleared!');}});
+document.getElementById('exportBtn').addEventListener('click',async()=>{const players=await DB.getAllPlayers();const b=new Blob([JSON.stringify(players,null,2)],{type:'application/json'});const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='alienDash_data.json';a.click();URL.revokeObjectURL(u);});
 document.getElementById('backFromAdmin').addEventListener('click',()=>{if(App.isAdmin)loadMenu();else showScreen('loginScreen');});
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-console.log('%c🛸 ALIEN DASH v4 — Shop · Believer · Custom Music · Hard Mode!','color:#00f5ff;font-size:14px;font-weight:bold');
+console.log('%c🛸 ALIEN DASH v5 — Telegram Login · Supabase · Shop · Believer · Slow→Fast!','color:#00f5ff;font-size:14px;font-weight:bold');
