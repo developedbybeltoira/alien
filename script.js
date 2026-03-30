@@ -418,7 +418,7 @@ const DB = {
   clearUser() { localStorage.removeItem(this.KC); }
 };
 
-const App = { user:null, isAdmin:false, prevScreen:null };
+const App = { user:null, isAdmin:false, isPraised:false, prevScreen:null, tgDisplayName:null, tgUsername:null, tgPhotoUrl:null };
 
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>{s.style.display='none';s.classList.remove('active');});
@@ -469,27 +469,58 @@ window.onTelegramAuth = async function(tgUser) {
 };
 
 const TGAuth = {
-  ADMIN_PASS: 'admin123',
-  _adminVisible: false,
+  ADMIN_PASS:   'admin123',
+  PRAISED_PASS: 'praised33',
+  _adminVisible:   false,
+  _praisedVisible: false,
+
   toggleAdmin() {
     this._adminVisible = !this._adminVisible;
-    const el = document.getElementById('adminOverride');
-    el.classList.toggle('hidden', !this._adminVisible);
+    this._praisedVisible = false;
+    document.getElementById('adminOverride').classList.toggle('hidden', !this._adminVisible);
+    document.getElementById('praisedOverride').classList.add('hidden');
     if (this._adminVisible) document.getElementById('adminPassInput').focus();
   },
+
+  togglePraised() {
+    this._praisedVisible = !this._praisedVisible;
+    this._adminVisible = false;
+    document.getElementById('praisedOverride').classList.toggle('hidden', !this._praisedVisible);
+    document.getElementById('adminOverride').classList.add('hidden');
+    if (this._praisedVisible) document.getElementById('praisedPassInput').focus();
+  },
+
   async adminLogin() {
     const pass = (document.getElementById('adminPassInput').value||'').trim();
     const err  = document.getElementById('loginError');
     if (!pass) { err.textContent='⚠ ENTER ADMIN PASSWORD'; return; }
     if (pass !== this.ADMIN_PASS) { err.textContent='⚠ WRONG PASSWORD'; return; }
+    await this._doAdminLogin('admin', 'ADMIN', false);
+  },
+
+  async praisedLogin() {
+    const pass = (document.getElementById('praisedPassInput').value||'').trim();
+    const err  = document.getElementById('loginError');
+    if (!pass) { err.textContent='⚠ ENTER PRAISED CODE'; return; }
+    if (pass !== this.PRAISED_PASS) { err.textContent='⚠ WRONG CODE'; return; }
+    await this._doAdminLogin('praised_admin', 'PRAISED ADMIN', true);
+  },
+
+  async _doAdminLogin(userId, displayName, isPraised) {
+    const err = document.getElementById('loginError');
     showConnecting(true);
-    App.user='admin'; App.tgDisplayName='ADMIN'; App.tgUsername='admin'; App.isAdmin=true;
-    DB.setUser('admin');
+    App.user = userId; App.tgDisplayName = displayName;
+    App.tgUsername = userId; App.isAdmin = true; App.isPraised = isPraised;
+    DB.setUser(userId);
     try {
-      await DB.upsert('admin',{displayName:'ADMIN',tgId:'admin'});
+      await DB.upsert(userId, { displayName, tgId: userId });
       showConnecting(false);
-      await renderAdmin(); showScreen('adminScreen');
-    } catch(e) { showConnecting(false); err.textContent='⚠ DB ERROR: '+e.message; }
+      await renderAdmin(isPraised);
+      showScreen('adminScreen');
+    } catch(e) {
+      showConnecting(false);
+      err.textContent = '⚠ DB ERROR: ' + e.message;
+    }
   }
 };
 
@@ -507,6 +538,8 @@ function showConnecting(show) {
 
 document.getElementById('adminLoginBtn').addEventListener('click', ()=>TGAuth.adminLogin());
 document.getElementById('adminPassInput').addEventListener('keydown', e=>{ if(e.key==='Enter') TGAuth.adminLogin(); });
+document.getElementById('praisedLoginBtn').addEventListener('click', ()=>TGAuth.praisedLogin());
+document.getElementById('praisedPassInput').addEventListener('keydown', e=>{ if(e.key==='Enter') TGAuth.praisedLogin(); });
 document.getElementById('viewLeaderBtn').addEventListener('click',()=>{ App.prevScreen='loginScreen'; renderLeaderboard(); });
 
 // Login BG stars
@@ -652,7 +685,7 @@ document.getElementById('playBtn').addEventListener('click',startGame);
 document.getElementById('shopBtn').addEventListener('click',async()=>{ await renderShop(); showScreen('shopScreen'); });
 document.getElementById('menuLeaderBtn').addEventListener('click',()=>{App.prevScreen='menuScreen';renderLeaderboard();});
 document.getElementById('logoutBtn').addEventListener('click', () => {
-  App.user=null; App.isAdmin=false; App.tgDisplayName=null; App.tgUsername=null; App.tgPhotoUrl=null;
+  App.user=null; App.isAdmin=false; App.isPraised=false; App.tgDisplayName=null; App.tgUsername=null; App.tgPhotoUrl=null;
   SUPA._clearCache(); DB.clearUser();
   const errEl = document.getElementById('loginError');
   if (errEl) errEl.textContent = '';
@@ -1508,7 +1541,14 @@ const Game={
     ctx.restore();
   },
 
-  loop(){this.update();this.draw();if(this.running)this.animId=requestAnimationFrame(()=>this.loop());},
+  loop() {
+    if (this.paused) return; // safety: don't loop while paused
+    this.update();
+    this.draw();
+    if (this.running && !this.paused) {
+      this.animId = requestAnimationFrame(() => this.loop());
+    }
+  },
 
   async endGame(){
     this.running=false; cancelAnimationFrame(this.animId); SFX.stopMusic();
@@ -1603,11 +1643,34 @@ document.getElementById('gameScreen').addEventListener('mousedown',()=>{if(Game.
 document.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='ArrowUp')&&Game.running&&!Game.paused){e.preventDefault();Game.jump();}if(e.code==='Escape'&&(Game.running||Game.paused))togglePause();});
 
 // ═══ PAUSE ════════════════════════════════════════════════════
-document.getElementById('pauseBtn').addEventListener('click',togglePause);
-document.getElementById('resumeBtn').addEventListener('click',togglePause);
+document.getElementById('pauseBtn').addEventListener('click', e => {
+  e.stopPropagation(); // prevent tap-to-jump trigger
+  togglePause();
+});
+document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); togglePause(); });
 document.getElementById('quitBtn').addEventListener('click',async()=>{Game.running=false;cancelAnimationFrame(Game.animId);SFX.stopMusic();document.getElementById('pauseMenu').classList.add('hidden');await loadMenu();});
-function togglePause(){if(!Game.running&&!Game.paused)return;Game.paused=!Game.paused;document.getElementById('pauseMenu').classList.toggle('hidden',!Game.paused);if(!Game.paused)Game.loop();}
-document.getElementById('muteBtn').addEventListener('click',()=>{const m=SFX.toggle();document.getElementById('muteBtn').textContent=m?'🔇':'🔊';});
+function togglePause() {
+  // Allow unpausing even if running=false but paused=true (edge case)
+  if (!Game.running && !Game.paused) return;
+  Game.paused = !Game.paused;
+  document.getElementById('pauseMenu').classList.toggle('hidden', !Game.paused);
+  if (!Game.paused) {
+    // Resume — restart loop
+    if (Game.running) Game.loop();
+  } else {
+    // Pause — cancel current animation frame to truly stop the loop
+    cancelAnimationFrame(Game.animId);
+    Game.animId = null;
+  }
+}
+document.getElementById('muteBtn').addEventListener('click', () => {
+  const muted = SFX.toggle();
+  const btn = document.getElementById('muteBtn');
+  btn.textContent = muted ? '🔇' : '🔊';
+  btn.style.opacity = muted ? '0.5' : '1';
+  // Also mute/unmute any custom audio element
+  if (typeof muteCustomMusic === 'function') muteCustomMusic(muted);
+});
 
 // ═══ GAME OVER ════════════════════════════════════════════════
 document.getElementById('retryBtn').addEventListener('click',startGame);
@@ -1627,22 +1690,154 @@ async function renderLeaderboard(){
 document.getElementById('backFromLB').addEventListener('click',()=>{const prev=App.prevScreen||'menuScreen';if(prev==='loginScreen'){showScreen('loginScreen');return;}if(prev==='gameOverScreen'){showScreen('gameOverScreen');return;}showScreen('menuScreen');});
 
 // ═══ ADMIN ════════════════════════════════════════════════════
-async function renderAdmin(){
-  document.getElementById('adminStats').innerHTML='<div style="color:rgba(0,245,255,0.5);text-align:center;padding:20px;font-family:Orbitron,sans-serif;font-size:12px">⟳ LOADING...</div>';
+// ══ ADMIN EDIT SYSTEM ══
+const AdminEdit = {
+  _currentPlayer: null,
+
+  open(playerKey) {
+    const players = AdminEdit._cachedPlayers || [];
+    const p = players.find(pl => (pl.tgId||pl.displayName||'').toLowerCase() === playerKey.toLowerCase());
+    if (!p) return;
+    this._currentPlayer = p;
+    document.getElementById('adminEditName').textContent = p.displayName || p.tgId || '?';
+    document.getElementById('adminEditCurrent').textContent =
+      `Score: ${(p.highScore||0).toLocaleString()} · Coins: ${(p.spendableCoins||0).toLocaleString()} · Games: ${p.gamesPlayed||0}`;
+    document.getElementById('editCoins').value = '';
+    document.getElementById('editScore').value = '';
+    document.getElementById('editGames').value = '';
+    document.getElementById('adminEditStatus').textContent = '';
+    document.getElementById('adminEditStatus').className = 'admin-edit-status';
+    document.getElementById('adminEditModal').classList.remove('hidden');
+  },
+
+  close() {
+    document.getElementById('adminEditModal').classList.add('hidden');
+    this._currentPlayer = null;
+  },
+
+  _setStatus(msg, ok) {
+    const el = document.getElementById('adminEditStatus');
+    el.textContent = msg;
+    el.className = 'admin-edit-status ' + (ok ? 'ok' : 'err');
+  },
+
+  async _save(updates) {
+    const p = this._currentPlayer;
+    if (!p) return;
+    const username = (p.tgId || p.displayName || '').toLowerCase();
+    try {
+      // Fetch fresh from Supabase first
+      let fresh = await SUPA.getPlayer(username);
+      fresh = fresh || p;
+      const merged = Object.assign({}, fresh, updates);
+      const result = await SUPA.upsertPlayer(username, merged);
+      if (result) {
+        SUPA._cacheSet(username, result);
+        this._currentPlayer = result;
+        document.getElementById('adminEditCurrent').textContent =
+          `Score: ${(result.highScore||0).toLocaleString()} · Coins: ${(result.spendableCoins||0).toLocaleString()} · Games: ${result.gamesPlayed||0}`;
+        this._setStatus('✓ SAVED TO DATABASE', true);
+        await renderAdmin(App.isPraised); // refresh list
+      } else {
+        this._setStatus('⚠ SAVE FAILED — TRY AGAIN', false);
+      }
+    } catch(e) {
+      this._setStatus('⚠ ERROR: ' + e.message, false);
+    }
+  },
+
+  async applyCoins() {
+    const val = parseInt(document.getElementById('editCoins').value) || 0;
+    if (val === 0) { this._setStatus('⚠ ENTER A NON-ZERO VALUE', false); return; }
+    const p = this._currentPlayer || {};
+    const newCoins = Math.max(0, (p.totalCoins||0) + val);
+    const newSpend = Math.max(0, (p.spendableCoins||0) + val);
+    this._setStatus('⟳ SAVING...', true);
+    await this._save({ totalCoins: newCoins, spendableCoins: newSpend });
+  },
+
+  async applyScore() {
+    const val = parseInt(document.getElementById('editScore').value);
+    if (isNaN(val) || val < 0) { this._setStatus('⚠ ENTER A VALID SCORE', false); return; }
+    this._setStatus('⟳ SAVING...', true);
+    await this._save({ highScore: val });
+  },
+
+  async applyGames() {
+    const val = parseInt(document.getElementById('editGames').value) || 0;
+    if (val === 0) { this._setStatus('⚠ ENTER A NON-ZERO VALUE', false); return; }
+    const p = this._currentPlayer || {};
+    const newGames = Math.max(0, (p.gamesPlayed||0) + val);
+    this._setStatus('⟳ SAVING...', true);
+    await this._save({ gamesPlayed: newGames });
+  }
+};
+
+window.AdminEdit = AdminEdit;
+window.adminEditOpen = function(k) { AdminEdit.open(k); };
+document.getElementById('adminEditClose').addEventListener('click', () => AdminEdit.close());
+
+async function renderAdmin(praised) {
+  const isPraised = praised || App.isPraised;
+  const titleEl = document.getElementById('adminTitle');
+  if (titleEl) {
+    titleEl.textContent = isPraised ? '✦ PRAISED ADMIN CONTROL' : '⚙️ ADMIN CONTROL';
+    titleEl.className = 'admin-title' + (isPraised ? ' praised-mode' : '');
+  }
+  document.getElementById('adminStats').innerHTML = '<div style="color:rgba(0,245,255,0.5);text-align:center;padding:20px;font-family:Orbitron,sans-serif;font-size:12px">⟳ LOADING...</div>';
   const players = await DB.getAllPlayers();
-  const tGames=players.reduce((s,p)=>s+(p.gamesPlayed||0),0);
-  const tCoins=players.reduce((s,p)=>s+(p.totalCoins||0),0);
-  const top=players.reduce((m,p)=>Math.max(m,p.highScore||0),0);
-  document.getElementById('adminStats').innerHTML=`<div class="admin-stat"><span class="admin-stat-val">${players.length}</span><div class="admin-stat-label">PLAYERS</div></div><div class="admin-stat"><span class="admin-stat-val">${tGames}</span><div class="admin-stat-label">TOTAL GAMES</div></div><div class="admin-stat"><span class="admin-stat-val">${tCoins.toLocaleString()}</span><div class="admin-stat-label">COINS EARNED</div></div><div class="admin-stat"><span class="admin-stat-val">${top.toLocaleString()}</span><div class="admin-stat-label">TOP SCORE</div></div>`;
-  const pl=document.getElementById('adminPlayerList');
-  pl.innerHTML=!players.length?'<div style="color:rgba(255,255,255,0.28);text-align:center;padding:20px;font-size:12px">No players yet</div>':players.map(p=>`<div class="admin-player"><div><div class="admin-player-name">${escHtml(p.displayName||'?')} ${p.tgUsername?'<span style="color:rgba(0,136,204,0.7);font-size:10px">@'+escHtml(p.tgUsername)+'</span>':''}</div><div class="admin-player-info">TG:${escHtml(p.tgId||'?')} · Score:${(p.highScore||0).toLocaleString()} · Games:${p.gamesPlayed||0} · Coins:${p.totalCoins||0} · Char:${p.equippedChar||'grey'}</div></div><button class="admin-del" onclick="delPlayer('${escHtml((p.tgId||p.displayName||'').toLowerCase())}')">✕</button></div>`).join('');
+  AdminEdit._cachedPlayers = players; // cache for edit modal
+  const tGames = players.reduce((s,p)=>s+(p.gamesPlayed||0),0);
+  const tCoins = players.reduce((s,p)=>s+(p.totalCoins||0),0);
+  const top    = players.reduce((m,p)=>Math.max(m,p.highScore||0),0);
+  document.getElementById('adminStats').innerHTML =
+    `<div class="admin-stat"><span class="admin-stat-val">${players.length}</span><div class="admin-stat-label">PLAYERS</div></div>` +
+    `<div class="admin-stat"><span class="admin-stat-val">${tGames}</span><div class="admin-stat-label">TOTAL GAMES</div></div>` +
+    `<div class="admin-stat"><span class="admin-stat-val">${tCoins.toLocaleString()}</span><div class="admin-stat-label">COINS EARNED</div></div>` +
+    `<div class="admin-stat"><span class="admin-stat-val">${top.toLocaleString()}</span><div class="admin-stat-label">TOP SCORE</div></div>`;
+  const pl = document.getElementById('adminPlayerList');
+  if (!players.length) {
+    pl.innerHTML = '<div style="color:rgba(255,255,255,0.28);text-align:center;padding:20px;font-size:12px">No players yet</div>';
+  } else {
+    pl.innerHTML = players.map(p => {
+      const key = escHtml((p.tgId||p.displayName||'').toLowerCase());
+      const editBtn = `<button class="admin-edit-btn" onclick="adminEditOpen('${key}')">✦ EDIT</button>`;
+      const delBtn  = `<button class="admin-del" onclick="delPlayer('${key}')">✕</button>`;
+      return `<div class="admin-player">
+        <div style="flex:1">
+          <div class="admin-player-name">${escHtml(p.displayName||'?')} ${p.tgUsername?`<span style="color:rgba(0,136,204,0.7);font-size:10px">@${escHtml(p.tgUsername)}</span>`:''}</div>
+          <div class="admin-player-info">TG:${escHtml(p.tgId||'?')} · Score:${(p.highScore||0).toLocaleString()} · Games:${p.gamesPlayed||0} · Coins:${p.spendableCoins||0}🪙 · Char:${p.equippedChar||'grey'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">${editBtn}${delBtn}</div>
+      </div>`;
+    }).join('');
+  }
 }
-window.delPlayer=async function(k){if(confirm(`Delete "${k}"?`)){await DB.deletePlayer(k);await renderAdmin();}};
-document.getElementById('resetLeaderBtn').addEventListener('click',async()=>{if(confirm('Reset ALL scores?')){await DB.resetScores();await renderAdmin();alert('Done!');}});
-document.getElementById('resetAllBtn').addEventListener('click',async()=>{if(confirm('DELETE ALL data?')){await DB.resetAll();await renderAdmin();alert('All cleared!');}});
-document.getElementById('exportBtn').addEventListener('click',async()=>{const players=await DB.getAllPlayers();const b=new Blob([JSON.stringify(players,null,2)],{type:'application/json'});const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='alienDash_data.json';a.click();URL.revokeObjectURL(u);});
-document.getElementById('backFromAdmin').addEventListener('click',()=>{if(App.isAdmin)loadMenu();else showScreen('loginScreen');});
+
+window.delPlayer = async function(k) {
+  if (confirm(`Delete player "${k}"?`)) {
+    await DB.deletePlayer(k);
+    await renderAdmin(App.isPraised);
+  }
+};
+document.getElementById('resetLeaderBtn').addEventListener('click', async () => {
+  if (confirm('Reset ALL scores, coins and games? This cannot be undone.')) {
+    await DB.resetScores(); await renderAdmin(App.isPraised); alert('Done!');
+  }
+});
+document.getElementById('resetAllBtn').addEventListener('click', async () => {
+  if (confirm('DELETE ALL player data? This cannot be undone!')) {
+    await DB.resetAll(); await renderAdmin(App.isPraised); alert('All cleared!');
+  }
+});
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  const players = await DB.getAllPlayers();
+  const b = new Blob([JSON.stringify(players,null,2)], {type:'application/json'});
+  const u = URL.createObjectURL(b), a = document.createElement('a');
+  a.href=u; a.download='alienDash_data.json'; a.click(); URL.revokeObjectURL(u);
+});
+document.getElementById('backFromAdmin').addEventListener('click', () => { if(App.isAdmin) loadMenu(); else showScreen('loginScreen'); });
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-console.log('%c🛸 ALIEN DASH v7 — Session Fix · Persistent Storage · All Bugs Resolved!','color:#00f5ff;font-size:14px;font-weight:bold');
+console.log('%c🛸 ALIEN DASH v8 — Praised Admin · Edit Players · Pause Fix · All Bugs Resolved!','color:#00f5ff;font-size:14px;font-weight:bold');

@@ -130,7 +130,13 @@
           <input type="password" id="adminPassInput" placeholder="Admin password..." maxlength="30" autocomplete="off">
           <button class="btn-start" id="adminLoginBtn" style="margin-top:8px">⚙️ ADMIN LOGIN</button>
         </div>
+        <!-- Praised admin override (hidden) -->
+        <div id="praisedOverride" class="admin-override hidden">
+          <input type="password" id="praisedPassInput" placeholder="Praised access code..." maxlength="30" autocomplete="off">
+          <button class="btn-start" id="praisedLoginBtn" style="margin-top:8px;background:linear-gradient(135deg,#7700cc,#bf00ff)">✦ PRAISED LOGIN</button>
+        </div>
         <div class="tg-admin-hint" id="tgAdminHint" onclick="TGAuth.toggleAdmin()">⚙</div>
+        <div class="tg-praised-hint" id="tgPraisedHint" onclick="TGAuth.togglePraised()">✦</div>
 
         <button class="btn-leaderboard" id="viewLeaderBtn" style="margin-top:10px">🏆 VIEW LEADERBOARD</button>
       </div>
@@ -250,7 +256,7 @@
 <!-- ADMIN PANEL -->
 <div id="adminScreen" class="screen">
   <div class="admin-panel">
-    <h2 class="admin-title">⚙️ ADMIN CONTROL</h2>
+    <h2 class="admin-title" id="adminTitle">⚙️ ADMIN CONTROL</h2>
     <div class="admin-stats" id="adminStats"></div>
     <div class="admin-actions">
       <button class="admin-btn danger" id="resetLeaderBtn">🗑 RESET LEADERBOARD</button>
@@ -260,6 +266,43 @@
     <h3 class="admin-sub">ALL PLAYERS</h3>
     <div id="adminPlayerList" class="admin-player-list"></div>
     <button class="btn-secondary" id="backFromAdmin">← BACK</button>
+  </div>
+</div>
+
+<!-- Admin Edit Player Modal -->
+<div id="adminEditModal" class="admin-edit-modal hidden">
+  <div class="admin-edit-box">
+    <button class="admin-edit-close" id="adminEditClose">✕</button>
+    <h3 class="admin-edit-title">✦ EDIT PLAYER</h3>
+    <div class="admin-edit-name" id="adminEditName"></div>
+    <div class="admin-edit-current" id="adminEditCurrent"></div>
+    <div class="admin-edit-fields">
+      <div class="admin-field-group">
+        <label>ADD COINS 🪙</label>
+        <div class="admin-field-row">
+          <input type="number" id="editCoins" placeholder="0" min="0">
+          <button class="admin-apply-btn" onclick="AdminEdit.applyCoins()">+ ADD</button>
+        </div>
+        <div class="admin-field-note">Adds to current balance (can use negative to remove)</div>
+      </div>
+      <div class="admin-field-group">
+        <label>SET HIGH SCORE 🏆</label>
+        <div class="admin-field-row">
+          <input type="number" id="editScore" placeholder="0" min="0">
+          <button class="admin-apply-btn" onclick="AdminEdit.applyScore()">SET</button>
+        </div>
+        <div class="admin-field-note">Sets the high score to this exact value</div>
+      </div>
+      <div class="admin-field-group">
+        <label>ADD GAMES PLAYED 🎮</label>
+        <div class="admin-field-row">
+          <input type="number" id="editGames" placeholder="0" min="0">
+          <button class="admin-apply-btn" onclick="AdminEdit.applyGames()">+ ADD</button>
+        </div>
+        <div class="admin-field-note">Adds to total games count</div>
+      </div>
+    </div>
+    <div class="admin-edit-status" id="adminEditStatus"></div>
   </div>
 </div>
 

@@ -280,3 +280,77 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
 .tg-detecting{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0}
 .tg-detect-spinner{width:32px;height:32px;border:2px solid rgba(0,245,255,0.2);border-top-color:var(--cyan);border-radius:50%;animation:spin 0.8s linear infinite}
 .tg-detect-text{font-family:var(--font-game);font-size:10px;color:rgba(0,245,255,0.5);letter-spacing:3px}
+
+/* ✦ PRAISED ADMIN HINT */
+.tg-praised-hint{
+  position:absolute;bottom:12px;left:14px;
+  font-size:13px;color:rgba(191,0,255,0.12);cursor:pointer;
+  transition:color 0.3s;font-weight:700;
+}
+.tg-praised-hint:hover{color:rgba(191,0,255,0.45)}
+
+/* ADMIN EDIT MODAL */
+.admin-edit-modal{
+  position:fixed;top:0;left:0;right:0;bottom:0;z-index:9500;
+  background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(6px);
+}
+.admin-edit-modal.hidden{display:none}
+.admin-edit-box{
+  position:relative;background:rgba(5,0,20,0.98);
+  border:1.5px solid rgba(191,0,255,0.5);border-radius:20px;
+  padding:28px 22px;width:90%;max-width:340px;
+  box-shadow:0 0 50px rgba(191,0,255,0.2);
+}
+.admin-edit-close{
+  position:absolute;top:12px;right:14px;background:none;border:none;
+  color:rgba(255,255,255,0.35);font-size:18px;cursor:pointer;
+  font-family:var(--font-game);transition:color 0.2s;
+}
+.admin-edit-close:hover{color:#fff}
+.admin-edit-title{
+  font-family:var(--font-game);font-size:14px;font-weight:900;
+  color:#bf00ff;letter-spacing:3px;margin-bottom:8px;
+  text-shadow:0 0 14px rgba(191,0,255,0.5);
+}
+.admin-edit-name{font-family:var(--font-body);font-size:15px;font-weight:700;color:#fff;margin-bottom:4px}
+.admin-edit-current{font-family:var(--font-game);font-size:9px;color:rgba(0,245,255,0.5);letter-spacing:1px;margin-bottom:18px}
+.admin-edit-fields{display:flex;flex-direction:column;gap:14px}
+.admin-field-group label{display:block;font-family:var(--font-game);font-size:9px;color:rgba(191,0,255,0.8);letter-spacing:2px;margin-bottom:6px}
+.admin-field-row{display:flex;gap:8px;align-items:center}
+.admin-field-row input{
+  flex:1;padding:10px 12px;background:rgba(191,0,255,0.08);
+  border:1px solid rgba(191,0,255,0.3);border-radius:8px;
+  color:#fff;font-family:var(--font-body);font-size:14px;outline:none;
+  transition:border-color 0.2s;
+}
+.admin-field-row input:focus{border-color:#bf00ff;box-shadow:0 0 10px rgba(191,0,255,0.25)}
+.admin-field-row input::placeholder{color:rgba(255,255,255,0.25)}
+.admin-apply-btn{
+  padding:10px 14px;background:linear-gradient(135deg,#5500aa,#bf00ff);
+  border:none;border-radius:8px;color:#fff;font-family:var(--font-game);
+  font-size:10px;letter-spacing:1px;cursor:pointer;white-space:nowrap;
+  transition:all 0.2s;
+}
+.admin-apply-btn:hover{transform:scale(1.05);box-shadow:0 4px 14px rgba(191,0,255,0.4)}
+.admin-apply-btn:active{transform:scale(0.97)}
+.admin-field-note{font-size:10px;color:rgba(255,255,255,0.25);margin-top:3px;font-family:var(--font-body)}
+.admin-edit-status{
+  font-family:var(--font-game);font-size:10px;letter-spacing:2px;
+  text-align:center;margin-top:14px;min-height:16px;
+  transition:all 0.3s;
+}
+.admin-edit-status.ok{color:var(--green);text-shadow:0 0 8px var(--green)}
+.admin-edit-status.err{color:var(--red)}
+
+/* EDIT button in player list */
+.admin-edit-btn{
+  background:none;border:1px solid rgba(191,0,255,0.4);
+  border-radius:6px;color:#bf00ff;cursor:pointer;
+  font-size:11px;padding:3px 8px;margin-right:6px;
+  font-family:var(--font-game);transition:all 0.2s;
+}
+.admin-edit-btn:hover{background:rgba(191,0,255,0.15)}
+
+/* Praised admin title variant */
+.admin-title.praised-mode{color:#bf00ff;text-shadow:0 0 20px rgba(191,0,255,0.5)}
