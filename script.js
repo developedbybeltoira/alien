@@ -469,8 +469,8 @@ window.onTelegramAuth = async function(tgUser) {
 };
 
 const TGAuth = {
-  ADMIN_PASS:   'admin123',
-  PRAISED_PASS: 'praised33',
+  ADMIN_PASS:   'superalien11',
+  PRAISED_PASS: 'praised33n',
   _adminVisible:   false,
   _praisedVisible: false,
 
@@ -1801,7 +1801,7 @@ async function renderAdmin(praised) {
   } else {
     pl.innerHTML = players.map(p => {
       const key = escHtml((p.tgId||p.displayName||'').toLowerCase());
-      const editBtn = `<button class="admin-edit-btn" onclick="adminEditOpen('${key}')">✦ EDIT</button>`;
+      const editBtn = isPraised ? `<button class="admin-edit-btn" onclick="adminEditOpen('${key}')">✦ EDIT</button>` : '';
       const delBtn  = `<button class="admin-del" onclick="delPlayer('${key}')">✕</button>`;
       return `<div class="admin-player">
         <div style="flex:1">
